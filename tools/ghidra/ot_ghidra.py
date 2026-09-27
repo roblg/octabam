@@ -5,6 +5,7 @@
     python3 tools/ghidra/ot_ghidra.py import [--ghidra DIR] [--project DIR] [--only MAIN_OS,DSP_A] [--image [PATH]]
     make ghidra [GHIDRA=<install dir>] [IMAGE=out/mainos_bus.bin]   # both steps
     make ghidra-install GHIDRA=<stock 12.1.4>            # the Ghidra to point GHIDRA at (install.sh)
+    python3 tools/ghidra/ot_ghidra.py lint [--image out/mainos_bus.bin]  # make lint-ghidra
 
 Three programs in one Ghidra project (default out/ghidra/octatrack.gpr):
 
@@ -422,6 +423,15 @@ def words_bytes(words):
     return b"".join(bytes((w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff)) for w in words)
 
 
+def dispatch_tables(tag, recs):
+    """(init, process): the X words of the two 32-entry dispatch tables."""
+    xt = [(addr + (XTAB[tag] - va) // 3) for sp, addr, words, va in recs
+          if sp == "X" and va <= XTAB[tag] < va + 3 * len(words) and (XTAB[tag] - va) % 3 == 0]
+    if len(xt) != 1:
+        sys.exit(f"payload {tag}: dispatch tables not found at 0x{XTAB[tag]:08x}")
+    return xt[0], xt[0] + 32
+
+
 def dsp_layout(tag, mem, recs, entry, other_entry):
     lines = [f"# DSP_{tag}: payload {tag}, {len(recs)} load records",
              "rename P:0x0 P_INTERNAL rwx",
@@ -451,11 +461,7 @@ def dsp_layout(tag, mem, recs, entry, other_entry):
         lines += [f"func P:0x{other_entry:x} payload_B_entry",
                   f"comment P:0x{other_entry:x} plate payload B's entry, written by payload A: the window is one memory"]
     # The dispatch tables.
-    xt = [(addr + (XTAB[tag] - va) // 3) for sp, addr, words, va in recs
-          if sp == "X" and va <= XTAB[tag] < va + 3 * len(words) and (XTAB[tag] - va) % 3 == 0]
-    if len(xt) != 1:
-        sys.exit(f"payload {tag}: dispatch tables not found at 0x{XTAB[tag]:08x}")
-    init, proc = xt[0], xt[0] + 32
+    init, proc = dispatch_tables(tag, recs)
     lines += [f"label X:0x{init:x} fx_init_table", f"data X:0x{init:x} uint3 32",
               f"comment X:0x{init:x} plate INIT_TABLE[effect id]: called when a slot's id changes (DSP.md 5)",
               f"label X:0x{proc:x} fx_process_table", f"data X:0x{proc:x} uint3 32",
@@ -539,10 +545,7 @@ def languages(g):
     return cf, dsp
 
 
-def cmd_import(args):
-    g, head = find_ghidra(args.ghidra)
-    cf, dsp = languages(g)
-    cmd_layout(args)
+def project_dir(args, quiet=False):
     proj = pathlib.Path(args.project).expanduser().resolve() if args.project else OUT
     # Ghidra refuses a project path with an element starting with '.'
     # ("Path element starting with '.' is not permitted"): a worktree under
@@ -552,7 +555,16 @@ def cmd_import(args):
         if args.project:
             sys.exit(f"Ghidra will not open a project under a directory starting with '.': {proj}")
         proj = pathlib.Path(os.environ.get("TMPDIR", "/tmp")).resolve() / f"octabam-ghidra-{os.getuid()}"
-        print(f"[ghidra] {OUT} is under a hidden directory; the project goes to {proj} (--project to choose)")
+        if not quiet:
+            print(f"[ghidra] {OUT} is under a hidden directory; the project goes to {proj} (--project to choose)")
+    return proj
+
+
+def cmd_import(args):
+    g, head = find_ghidra(args.ghidra)
+    cf, dsp = languages(g)
+    cmd_layout(args)
+    proj = project_dir(args)
     proj.mkdir(parents=True, exist_ok=True)
     only = set(args.only.split(",")) if args.only else {"MAIN_OS", "DSP_A", "DSP_B", "REMIX"}
     load = OUT / "load"
@@ -603,6 +615,158 @@ def cmd_import(args):
         sys.exit(f"failed: {', '.join(failed)}")
 
 
+def dsp_lint_inputs(built, work):
+    """Write each payload's built memory and PROGRAM.in for OtLintDsp.java."""
+    cores, shared = dsp_images(built)
+    (work / "SHARED.bin").write_bytes(words_bytes(shared))
+    for tag, (mem, recs, _entry) in cores.items():
+        prog = f"DSP_{tag}"
+        lines = [f"# {prog}: the built payload {tag}"]
+        for sp in "PXY":
+            (work / f"{prog}.{sp}.bin").write_bytes(words_bytes(mem[sp]))
+            lines.append(f"mem {sp} 0x0 {prog}.{sp}.bin")
+        lines.append(f"mem P 0x{SHARED:x} SHARED.bin")
+        for sp, addr, words, _va in recs:
+            if sp == "P":
+                lines.append(f"loaded 0x{addr:x} 0x{len(words):x}")
+        for t, _va, ln, dsp in dm.BOOTSTRAPS:
+            lines.append(f"loaded 0x{dsp:x} 0x{ln // 3:x}")
+        init, proc = dispatch_tables(tag, recs)
+        lines.append(f"xtab 0x{init:x} 0x{proc:x}")
+        (work / f"{prog}.in").write_text("\n".join(lines) + "\n")
+
+
+def cf_lint_inputs(built, work):
+    stock_len = IMG.stat().st_size
+    (work / "MAIN_OS.image").write_bytes(built)
+    lines = ["# MAIN_OS: the built image", f"image 0x{BASE:x} MAIN_OS.image"]
+    for i, (at, raw, _blob, _n) in enumerate(dram_runtimes(built, stock_len)):
+        (work / f"MAIN_OS.dram{i}").write_bytes(raw)
+        lines.append(f"dram 0x{at:x} MAIN_OS.dram{i}")
+    (work / "MAIN_OS.in").write_text("\n".join(lines) + "\n")
+
+
+def form_components(key):
+    """The parts of an encoding the chip decodes on their own.
+
+    A parallel instruction (`mnemonic instr:[...|ALU;ALUm;ALUW;PM|...](...)`)
+    is its ALU op and its parallel move, each from its own field, so a stock
+    op with a stock move is not new even in a pairing stock never uses. Any
+    other instruction is one part: its whole tree."""
+    mn, _, rest = key.partition(" ")
+    if not rest.startswith("instr:") or "|ALU;ALUm;ALUW;PM|" not in rest.split("](", 1)[0]:
+        return {key}
+    body = rest.split("](", 1)[1][:-1]
+    parts, depth, cur = [], 0, ""
+    for ch in body:
+        depth += 1 if ch in "([" else -1 if ch in ")]" else 0
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    alu = " ".join(p for p in parts if p.startswith("ALU"))
+    return {f"alu {mn} {alu}"} | {f"pm {p}" for p in parts if p.startswith("PM")}
+
+
+def read_out(path):
+    rows = []
+    for line in path.read_text().splitlines():
+        rows.append(line.split("\t"))
+    return rows
+
+
+def waived(check, key, waivers, regs=()):
+    """The waiver covering a finding; one that names `regs` covers only those."""
+    return next((w for w in waivers if w["check"] == check and w["key"] == key
+                 and (not regs or "regs" not in w or set(regs) <= set(w["regs"].split()))), None)
+
+
+def cmd_lint(args):
+    g, head = find_ghidra(args.ghidra)
+    _cf, dsp = languages(g)
+    if not dsp:
+        sys.exit(f"lint-ghidra: {g} has no DSP56300 processor module (tools/ghidra/README.md)")
+    image = pathlib.Path(args.image)
+    if not image.exists():
+        sys.exit(f"lint-ghidra: no built image at {image}: run `make bus` first")
+    if not IMG.exists():
+        sys.exit(f"lint-ghidra: missing {IMG}: run `make os && make recon` first")
+    built = image.read_bytes()
+    proj = project_dir(args, quiet=True)
+    if not (proj / f"{args.name}.gpr").exists():
+        print(f"[lint] no stock project at {proj / args.name}.gpr: importing it first (once; a few minutes)")
+        args.only, args.no_analysis = None, False
+        stock_args = argparse.Namespace(**{**vars(args), "image": None})   # the stock programs only, no REMIX
+        cmd_import(stock_args)
+    work = OUT / "lint"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    dsp_lint_inputs(built, work)
+    cf_lint_inputs(built, work)
+
+    cmd = [str(head), str(proj), args.name, "-process", "-readOnly", "-noanalysis",
+           "-scriptPath", str(HERE), "-postScript", "OtLintDsp.java", str(work),
+           "-postScript", "OtLintCf.java", str(work)]
+    log(" ".join(cmd))
+    logf = work / "ghidra.log"
+    with open(logf, "w") as fh:
+        rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode
+    text = logf.read_text(errors="replace")
+    for m in re.finditer(r"(OtLint(?:Dsp|Cf): .*?)(?:\s+\(GhidraScript\))?\s*$", text, re.M):
+        log(m.group(1))
+    outs = {p: work / f"{p}.out" for p in ("MAIN_OS", "DSP_A", "DSP_B")}
+    missing = [p for p, o in outs.items() if not o.exists()]
+    if rc != 0 or missing:
+        for ln in [ln for ln in text.splitlines() if "ERROR" in ln or "Exception" in ln][:10]:
+            print(f"    {ln.strip()}")
+        sys.exit(f"lint-ghidra: Ghidra failed (exit {rc}; no output for {', '.join(missing) or '-'}); "
+                 f"the log is {logf}")
+
+    import lint_waivers
+    waivers = lint_waivers.WAIVERS
+    # form rows: form, stock|built, encoding class, text, address
+    stock_forms, built_forms, findings, used = set(), {}, [], set()
+    for prog, o in outs.items():
+        for row in read_out(o):
+            if row[0] == "form" and row[1] == "stock":
+                stock_forms.add(row[2])
+            elif row[0] == "form" and row[1] == "built":
+                built_forms.setdefault(row[2], []).append((row[3], f"{prog}:{row[4]}"))
+            elif row[0] == "finding":
+                findings.append((row[1], f"{prog}:{row[2]}", row[3], (row[4].split() if len(row) > 4 else [])))
+            elif row[0] == "note":
+                log(f"{prog}: {row[1]}")
+    stock_parts = set().union(*(form_components(k) for k in stock_forms)) if stock_forms else set()
+    new_parts = {}
+    for key, sites in built_forms.items():
+        for part in form_components(key) - stock_parts:
+            new_parts.setdefault(part, []).extend(sites)
+    for part, sites in sorted(new_parts.items(), key=lambda kv: kv[1][0][0]):
+        where = ", ".join(f"{a} `{t.strip()}`" for t, a in sites[:4])
+        findings.append(("novel-form", part,
+                         f"an encoding neither stock payload uses: {where}"
+                         + (f" and {len(sites) - 4} more" if len(sites) > 4 else "")))
+    bad = 0
+    for check, key, text, *rest in findings:
+        w = waived(check, key, waivers, rest[0] if rest else ())
+        if w:
+            used.add(id(w))
+            log(f"waived {check} {key}: {w['why']}")
+            continue
+        bad += 1
+        print(f"LINT {check} {key}: {text}")
+    stale = [w for w in waivers if id(w) not in used]
+    for w in stale:
+        log(f"waiver not needed by this image: {w['check']} {w['key']}")
+    n = sum(len(v) for v in built_forms.values())
+    print(f"[lint] {image}: {n} changed DSP instructions ({len(built_forms)} encodings), "
+          f"{len(findings)} findings, {len(findings) - bad} waived, {bad} failing")
+    if bad:
+        sys.exit(1)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -616,8 +780,13 @@ def main():
     im.add_argument("--only", help="comma-separated subset of MAIN_OS,DSP_A,DSP_B,REMIX")
     im.add_argument("--image", nargs="?", const=str(ROOT / "out/mainos_bus.bin"), help=img_help)
     im.add_argument("--no-analysis", action="store_true", help="import and lay out only; analyse later in the GUI")
+    li = sub.add_parser("lint", help="static checks on a built image against the stock project")
+    li.add_argument("--ghidra", help="Ghidra install directory (default $GHIDRA_INSTALL_DIR)")
+    li.add_argument("--project", help="project directory (default out/ghidra)")
+    li.add_argument("--name", default="octatrack", help="project name (default octatrack)")
+    li.add_argument("--image", default=str(ROOT / "out/mainos_bus.bin"), help="the built image (default out/mainos_bus.bin)")
     args = ap.parse_args()
-    {"layout": cmd_layout, "import": cmd_import}[args.cmd](args)
+    {"layout": cmd_layout, "import": cmd_import, "lint": cmd_lint}[args.cmd](args)
 
 
 if __name__ == "__main__":

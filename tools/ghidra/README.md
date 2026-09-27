@@ -97,6 +97,97 @@ writer `0x40054cd8` has the three stock callers (`0x40062530`,
 `0x400625aa`, `0x400a15f0`) and a fourth, `0x400d75d6`, in the ColdFire
 cave the build fills (`0x400d6b00`..`0x400d7c3c`, `tools/remix/state.py`).
 
+## `make lint-ghidra`: static checks on a built image
+
+```bash
+make bus && make lint-ghidra GHIDRA=out/ghidra/ghidra_12.1.4_PUBLIC-octabam
+python3 tools/ghidra/ot_ghidra.py lint --ghidra DIR [--image out/mainos_bus.bin] [--project DIR]
+```
+
+The gate fails when no Ghidra is given, or when the Ghidra given has no DSP56300
+module (`make ghidra-install` above makes one). The first run imports the stock project if it is missing, which takes a
+few minutes. After that a run takes about 20 s.
+
+The built image goes into the stock programs for one read-only headless run,
+and nothing is saved. That includes each DRAM runtime, unpacked from the
+image's appended payloads (`depack.py`). A finding prints as
+`LINT <check> <key>: <what>`, and any finding not waived fails the gate.
+
+| check | where | what it catches |
+|---|---|---|
+| `hook-boundary` | ColdFire | a patch whose last instruction falls through (a `jsr`'s return) ends inside a stock instruction |
+| `branch-into-span` | ColdFire | stock code reaches an instruction a patch overwrote |
+| `detour-target` | ColdFire | a hook, a call, or a flow out of new code lands inside an instruction, on nothing, or mid-routine in new code |
+| `reg-liveness` | ColdFire | where a cave comes back to stock, a register or flag live there (stock liveness) differs from what the displaced instructions would have left. For a cave that returns for the hooked routine, it is compared with stock's own way out |
+| `reg-contract` | DSP | a dispatch-table entry writes a register the dispatcher reads after its call. The contract comes from stock: live after the call, and written by no stock effect. `init` must keep r1 and m0 |
+| `call-clobber` | DSP | the caller sets a register just before a `bsr`/`jsr`, the callee writes it without reading it first, and the caller reads it after |
+| `do-loop-end` | DSP | a loop holding changed words ends on a change of flow or loop control, or its LA is not an instruction's last word |
+| `wild-target` | DSP | a flow or dispatch entry goes to a word no record loads, or into a two-word instruction |
+| `novel-form` | DSP | an encoding neither stock payload uses. The key is the tree of SLEIGH constructors that decoded it, each named by its display template, operands and length (not its line, which moves), with register choices collapsed. A parallel instruction's ALU op and its move are keyed separately: the chip decodes each from its own field |
+
+`reg-liveness` follows the cave with a small symbolic interpreter over p-code.
+- Stack slots are tracked, so a register that is saved and restored counts as
+  preserved.
+- Each callee is summarised by the same interpreter, falling back to the ABI:
+  d0/d1/a0/a1 and the flags are scratch.
+- Flags read wholesale into SR/CCR do not count as uses.
+- X counts as used only by the extend arithmetic and the rotates.
+- A callee's prologue saving d2-d7/a2-a6 does not count as using them.
+
+### Waivers
+
+A finding that is safe goes in `lint_waivers.py`, with the reason and the
+evidence. A `reg-liveness` waiver names its registers (`regs="D6"`), so a new
+clobber at the same site still fails. `DEBUG=1` lists each waiver applied and
+each waiver the image did not need. upstream main (68af650, `bamsep26`)
+needs these:
+
+- **Four intentional outputs:**
+  - rig-hosts' a0/a1 at `0x40005830`/`0x40005840`;
+  - scenes-p2's d6 at `0x40037840`/`0x40037bdc`.
+
+  Each is waived with the module's own statement.
+- **11 DSP encoding parts with no stock precedent:** entered as **BASELINE,
+  unreviewed**. Each needs hardware evidence, or a rewrite to a form stock
+  uses. They include `div`/`andi`/`rep`, an `or` from a register, moves and a
+  `lua` with a negative displacement (Character's deliberate `lua (r3-$2)`),
+  and two Y parallel-move forms.
+
+A waiver covers a part wherever it appears. The negative-displacement `lua`
+waiver would also pass a wrapped `lua (r7+$46)`, which is the same encoding.
+That incident is a read below the r7 instance block, and an r7 slot-bounds
+check is the place to catch it.
+
+### Replayed incidents
+
+These are images of known failures (`docs/remixer/FAILURE_MODES.md`, the
+history), rebuilt from their commits or reconstructed where the broken state
+was never committed. Each was built with the assembler of its time. Measured
+on Ghidra 12.1.4 with `make ghidra-install`; the same on 12.3-DEV with the
+`roblg/ghidra` branches.
+
+| incident | image | flagged |
+|---|---|---|
+| image 99: Spectrum `init` moves r1 | 8a40a31 | `reg-contract` X:0x219, both payloads |
+| fs_rset clobbers x1 | 563d32c | `call-clobber` A P:0x147f, B P:0xfc0 |
+| midisc bank_sw saves only d0 | d556acf | `reg-liveness` d3 at `0x40087d44` |
+| midisc WRITE_HOOK: the continuation `0x40055390` lands inside `move.l #0x18b2` (midisc TECH.md) | d556acf | `detour-target` |
+| V6: a detour into the middle of `save_stub` | reconstruction | `detour-target` `0x40009664` |
+| a 6-byte `jmp` over `move.l; lea`, the cave back into it | reconstruction | `detour-target` `0x400d741a` |
+| a `do` whose loop end resolved by label prefix | 59332e8 | `wild-target` + `do-loop-end` |
+| `lua (r7+$46)` wrapped to `-$3a` | reconstruction | `novel-form` against stock; passed by main's baseline waiver (above) |
+| the corrected V6; upstream main | 40a1f19; 68af650 | nothing unwaived |
+
+Not caught:
+- **Image 44's `move a,y:(r3+$1)`.** Stock uses the same encoding (payload A
+  P:0xc73, `move b,y:(r4+$2)`), and image 45 wedged without it.
+- **`max`/`rnd` from the old assembler.** Stock uses both encodings; the
+  build's round-trip check covers them.
+- **The `jsr` planted at P:0x57.** The loop's LA is 0x56.
+- **Tcc flag and `asr` Z-flag cases.** They are about what the flags mean, not
+  whether they survive.
+- **Timing, cross-core and DMA failures.**
+
 ## Reading the DSP programs
 
 - Addresses are words: `P:0x7d1` is word `0x7d1`. The DSP is little-endian,
