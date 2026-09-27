@@ -13,7 +13,7 @@
 // Output, tab-separated, one fact per line:
 //   form stock KEY ADDR        every stock instruction's form (the census)
 //   form built KEY ADDR        every changed instruction's form
-//   finding CHECK ADDR TEXT    do-loop-end | wild-target
+//   finding CHECK ADDR TEXT    do-loop-end | wild-target | reg-contract
 //   note TEXT
 //
 // A form is the mnemonic and operands with numbers, addresses and the index
@@ -26,8 +26,16 @@
 import java.io.File;
 import java.io.PrintWriter;
 import java.nio.file.Files;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.plugin.processors.sleigh.ConstructState;
@@ -46,6 +54,7 @@ import ghidra.program.model.mem.Memory;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.Varnode;
 import ghidra.program.model.scalar.Scalar;
+import ghidra.program.model.symbol.RefType;
 
 public class OtLintDsp extends GhidraScript {
 
@@ -118,6 +127,36 @@ public class OtLintDsp extends GhidraScript {
 					": " + bad);
 			}
 		}
+
+		// The dispatcher's contract, from stock: the registers live after each
+		// call through a dispatch table that no stock effect writes.
+		initTracked();
+		long[] tables = xinit >= 0 ? new long[] { xinit, xproc } : new long[0];
+		Map<Long, BitSet> contract = new HashMap<>();
+		Map<Long, String> contractSites = new HashMap<>();
+		for (long t : tables) {
+			BitSet live = new BitSet(), clob = new BitSet();
+			StringBuilder where = new StringBuilder();
+			for (Instruction c : dispatchCalls(listing, P, t)) {
+				Address ft = c.getFallThrough();
+				if (ft != null) {
+					live.or(liveIn(ft));
+					where.append(where.length() > 0 ? ", " : "").append(c.getAddress());
+				}
+			}
+			for (int i = 0; i < 32; i++) {
+				clob.or(writes(word(P, readWord(mem, word(X, t + i)))));
+			}
+			BitSet k = (BitSet) live.clone();
+			k.andNot(clob);
+			contract.put(t, k);
+			contractSites.put(t, where.toString());
+			out.println("note\tdispatch X:0x" + Long.toHexString(t) + " (calls at " + where +
+				"): live after " + names(live) + "; stock effects write " + names(clob) +
+				"; contract " + names(k));
+		}
+		liveMemo.clear();
+		writeMemo.clear();
 
 		// Find the built words that differ.
 		AddressSet changed = new AddressSet();
@@ -209,6 +248,24 @@ public class OtLintDsp extends GhidraScript {
 			if (why != null) {
 				finding("wild-target", word(X, e[0]),
 					"dispatch entry X:0x" + Long.toHexString(e[0]) + " -> " + t + ": " + why);
+			}
+		}
+
+		// Each dispatch entry keeps the registers the dispatcher still needs.
+		for (long t : tables) {
+			for (int i = 0; i < 32; i++) {
+				Address e = word(P, readWord(mem, word(X, t + i)));
+				if (listing.getInstructionAt(e) == null) {
+					continue;
+				}
+				BitSet bad = writes(e);
+				bad.and(contract.get(t));
+				if (!bad.isEmpty()) {
+					finding("reg-contract", word(X, t + i), String.format(
+						"id 0x%02x (%s) -> %s writes %s, which the dispatcher reads after its call at %s; " +
+							"no stock effect writes it",
+						i, t == xinit ? "init" : "process", e, names(bad), contractSites.get(t)));
+				}
 			}
 		}
 
@@ -464,6 +521,206 @@ public class OtLintDsp extends GhidraScript {
 		DisassembleCommand cmd = new DisassembleCommand(seeds, null, true);
 		cmd.applyTo(currentProgram, monitor);
 	}
+
+	// ---- dataflow over p-code, by register byte --------------------------
+
+	private static final String[] TRACKED = { "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
+		"n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "m0", "m1", "m2", "m3", "m4", "m5", "m6",
+		"m7", "x0", "x1", "y0", "y1", "a0", "a1", "a2", "b0", "b1", "b2" };
+	private static final int BUDGET = 20000;
+	private final BitSet tracked = new BitSet();
+	private final Map<Address, BitSet> liveMemo = new HashMap<>();
+	private final Map<Address, BitSet> writeMemo = new HashMap<>();
+
+	private void initTracked() {
+		for (String n : TRACKED) {
+			Register r = currentProgram.getRegister(n);
+			int off = (int) r.getAddress().getOffset();
+			tracked.set(off, off + r.getMinimumByteSize());
+		}
+	}
+
+	private BitSet bytes(Varnode v) {
+		BitSet b = new BitSet();
+		if (v != null && v.isRegister()) {
+			b.set((int) v.getOffset(), (int) v.getOffset() + v.getSize());
+			b.and(tracked);
+		}
+		return b;
+	}
+
+	private String names(BitSet b) {
+		List<String> l = new ArrayList<>();
+		for (String n : TRACKED) {
+			Register r = currentProgram.getRegister(n);
+			int off = (int) r.getAddress().getOffset();
+			if (b.get(off, off + r.getMinimumByteSize()).cardinality() > 0) {
+				l.add(n);
+			}
+		}
+		return l.isEmpty() ? "nothing" : String.join(" ", l);
+	}
+
+	/** {read before written, written} for one instruction. */
+	private BitSet[] genKill(Instruction in) {
+		BitSet gen = new BitSet(), kill = new BitSet();
+		for (PcodeOp op : in.getPcode()) {
+			int oc = op.getOpcode();
+			int first = (oc == PcodeOp.BRANCH || oc == PcodeOp.CBRANCH || oc == PcodeOp.CALL) ? 1 : 0;
+			for (int i = first; i < op.getNumInputs(); i++) {
+				BitSet r = bytes(op.getInput(i));
+				r.andNot(kill);
+				gen.or(r);
+			}
+			kill.or(bytes(op.getOutput()));
+		}
+		return new BitSet[] { gen, kill };
+	}
+
+	/** Where control goes next inside the routine: a call continues after itself. */
+	private static List<Address> successors(Instruction in) {
+		List<Address> l = new ArrayList<>();
+		if (!in.getFlowType().isCall()) {
+			Collections.addAll(l, in.getFlows());
+		}
+		if (in.getFallThrough() != null) {
+			l.add(in.getFallThrough());
+		}
+		return l;
+	}
+
+	private static List<Address> callees(Instruction in) {
+		List<Address> l = new ArrayList<>();
+		if (in.getFlowType().isCall()) {
+			Collections.addAll(l, in.getFlows());
+		}
+		return l;
+	}
+
+	/**
+	 * Registers read before they are written on some path from `start` to the
+	 * return. A call reads what its callee's entry needs and writes nothing, so
+	 * the answer errs towards live.
+	 */
+	private BitSet liveIn(Address start) {
+		BitSet memo = liveMemo.get(start);
+		if (memo != null) {
+			return memo;
+		}
+		liveMemo.put(start, new BitSet());          // a recursive call sees nothing
+		Listing listing = currentProgram.getListing();
+		Map<Address, Instruction> nodes = new LinkedHashMap<>();
+		ArrayDeque<Address> work = new ArrayDeque<>(List.of(start));
+		while (!work.isEmpty() && nodes.size() < BUDGET) {
+			Address a = work.pop();
+			Instruction in = listing.getInstructionAt(a);
+			if (in == null || nodes.containsKey(a)) {
+				continue;
+			}
+			nodes.put(a, in);
+			work.addAll(successors(in));
+		}
+		Map<Address, BitSet[]> gk = new HashMap<>();
+		for (Instruction in : nodes.values()) {
+			BitSet[] g = genKill(in);
+			for (Address c : callees(in)) {
+				BitSet r = (BitSet) liveIn(c).clone();
+				r.andNot(g[1]);
+				g[0].or(r);
+			}
+			gk.put(in.getAddress(), g);
+		}
+		Map<Address, BitSet> live = new HashMap<>();
+		List<Instruction> order = new ArrayList<>(nodes.values());
+		Collections.reverse(order);
+		boolean moved = true;
+		while (moved) {
+			moved = false;
+			for (Instruction in : order) {
+				BitSet o = new BitSet();
+				for (Address s : successors(in)) {
+					BitSet l = live.get(s);
+					if (l != null) {
+						o.or(l);
+					}
+				}
+				BitSet[] g = gk.get(in.getAddress());
+				o.andNot(g[1]);
+				o.or(g[0]);
+				if (!o.equals(live.get(in.getAddress()))) {
+					live.put(in.getAddress(), o);
+					moved = true;
+				}
+			}
+		}
+		BitSet r = live.getOrDefault(start, new BitSet());
+		liveMemo.put(start, r);
+		return r;
+	}
+
+	/** Every register written on some path from `entry`, callees included. */
+	private BitSet writes(Address entry) {
+		BitSet memo = writeMemo.get(entry);
+		if (memo != null) {
+			return (BitSet) memo.clone();
+		}
+		writeMemo.put(entry, new BitSet());
+		Listing listing = currentProgram.getListing();
+		BitSet w = new BitSet();
+		Set<Address> seen = new HashSet<>();
+		ArrayDeque<Address> work = new ArrayDeque<>(List.of(entry));
+		while (!work.isEmpty() && seen.size() < BUDGET) {
+			Address a = work.pop();
+			Instruction in = listing.getInstructionAt(a);
+			if (in == null || !seen.add(a)) {
+				continue;
+			}
+			w.or(genKill(in)[1]);
+			for (Address c : callees(in)) {
+				w.or(writes(c));
+			}
+			work.addAll(successors(in));
+		}
+		writeMemo.put(entry, w);
+		return (BitSet) w.clone();
+	}
+
+	/** Indirect calls whose target comes from the dispatch table at X:t. */
+	private List<Instruction> dispatchCalls(Listing listing, AddressSpace P, long t) {
+		List<Instruction> l = new ArrayList<>();
+		InstructionIterator it = listing.getInstructions(P.getMinAddress(), true);
+		while (it.hasNext()) {
+			Instruction in = it.next();
+			if (in.getAddress().getAddressSpace() != P) {
+				break;
+			}
+			if (in.getFlowType() != RefType.COMPUTED_CALL &&
+				in.getFlowType() != RefType.CONDITIONAL_COMPUTED_CALL) {
+				continue;
+			}
+			Instruction p = in;
+			for (int k = 0; k < 8 && p != null; k++) {
+				p = p.getPrevious();
+				if (p != null && usesConstant(p, t)) {
+					l.add(in);
+					break;
+				}
+			}
+		}
+		return l;
+	}
+
+	private static boolean usesConstant(Instruction in, long c) {
+		for (PcodeOp op : in.getPcode()) {
+			for (Varnode v : op.getInputs()) {
+				if (v.isConstant() && v.getOffset() == c) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 
 	private static Address word(AddressSpace sp, long w) {
 		return sp.getTruncatedAddress(w, true);
