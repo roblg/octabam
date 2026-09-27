@@ -265,6 +265,10 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# the page-2 editor with a scene held writing the pool; SKIPs without
 	@# OT_PROJECT (above).
 	python3 tools/verify/verify_scenesp2.py $(REMIX)
+	@# 4-VOICE KIT: a KIT4 track's source stream == its four slice voices
+	@# struck by the STRT mask and summed, sample for sample, sliced and
+	@# unsliced; SKIPs without OT_PROJECT or without the module.
+	python3 tools/verify/verify_kit4.py $(REMIX)
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]

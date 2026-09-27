@@ -208,14 +208,25 @@ def check(selected) -> list[str]:
             hooks[d.site] = m.name
     pokes: list[tuple[int, int, str, str]] = []
     for m in selected:
+        mine: list[tuple[int, int, str, str]] = []
         for t in getattr(m, "tables", ()):
             for addr, _old in t.refs:
-                pokes.append((addr, 4, m.name, f"table ref ({t.label})"))
+                mine.append((addr, 4, m.name, f"table ref ({t.label})"))
         for r in getattr(m, "symbol_refs", ()):
-            pokes.append((r.addr, 4, m.name,
-                          f"symbol ref {r.unit}:{r.symbol} ({r.note or hex(r.addr)})"))
+            mine.append((r.addr, 4, m.name,
+                         f"symbol ref {r.unit}:{r.symbol} ({r.note or hex(r.addr)})"))
         for p in getattr(m, "pokes", ()):
-            pokes.append((p.addr, len(p.expect), m.name, f"poke {p.note or hex(p.addr)}"))
+            mine.append((p.addr, len(p.expect), m.name, f"poke {p.note or hex(p.addr)}"))
+        # Two modules rewriting the same stock bytes (SYNTH MACHINE and
+        # 4-VOICE KIT both repoint the kind table's FLEX entry): the build
+        # would stop at the second's stock-value assert, but the matrix
+        # has to know the pair does not compose.
+        for start, length, _owner, label in mine:
+            for ostart, olength, oowner, olabel in pokes:
+                if _overlap(ostart, olength, start, length):
+                    clash("poke site", f"{oowner} ({olabel})", f"{m.name} ({label})",
+                          f"0x{max(ostart, start):08x} -- both rewrite the same bytes")
+        pokes.extend(mine)
     # A FLOATING emit cave's poke ADDRESSES do not depend on where the cave
     # lands -- only the values written do -- so it is evaluated at a probe
     # address purely to learn its sites. Until it was skipped,

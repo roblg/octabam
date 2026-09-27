@@ -27,6 +27,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 
 | remix | contains | proof |
 |---|---|---|
+| [`kit4`](../../remixes/kit4/README.md) | 4-VOICE KIT on the stock effects. | port-gated: `verify_kit4` |
 | [`kits`](../../remixes/kits/README.md) | All the firmware mods of the Octakit family, no effects: 256 Kits, the LO-FI AMF fix, CC to page 2. | port-gated |
 | [`lofi-amf-fix`](../../remixes/lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. | `make check` |
 | [`midi-scenes`](../../remixes/midi-scenes/README.md) | Reference minimal build: the MIDI SCENES ColdFire patch, alone. | `make check`: on hardware inside `ok-ms` |
