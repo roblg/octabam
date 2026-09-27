@@ -436,6 +436,11 @@ public class OtLintDsp extends GhidraScript {
 				}
 			}
 			StringBuilder s = new StringBuilder();
+			// A parallel instruction's ALU op is named by its mnemonic, which its
+			// template does not hold; elsewhere the template does.
+			if (root.getConstructor() != null && sig(root.getConstructor()).contains("|ALU;")) {
+				s.append(in.getMnemonicString().toLowerCase()).append(' ');
+			}
 			constructors(root, s, true);
 			return s.toString();
 		}
@@ -458,10 +463,11 @@ public class OtLintDsp extends GhidraScript {
 	}
 
 	/**
-	 * The SLEIGH constructors that decoded the instruction, by line: the root
-	 * and every subtable constructor with operands of its own (an addressing
-	 * mode, a parallel-move class).  A constructor with none only picks a
-	 * register, so it counts by its table's name alone.
+	 * The SLEIGH constructors that decoded the instruction: the root and every
+	 * subtable constructor with operands of its own (an addressing mode, a
+	 * parallel-move class), each named by what it is (sig) rather than by its
+	 * line, which moves whenever the spec gains a line.  A constructor with
+	 * no operands only picks a register, so it counts by its table's name.
 	 */
 	private static void constructors(ConstructState st, StringBuilder s, boolean top) {
 		if (st == null || st.getConstructor() == null) {
@@ -470,7 +476,7 @@ public class OtLintDsp extends GhidraScript {
 		Constructor c = st.getConstructor();
 		String table = c.getParent() == null ? "?" : c.getParent().getName();
 		if (top || c.getNumOperands() > 0) {
-			s.append(table).append(':').append(c.getLineno());
+			s.append(table).append(':').append(sig(c));
 		}
 		else {
 			s.append(table);
@@ -485,6 +491,21 @@ public class OtLintDsp extends GhidraScript {
 			}
 			s.append(')');
 		}
+	}
+
+	/** A constructor by its display template, its operands and its length. */
+	private static String sig(Constructor c) {
+		StringBuilder s = new StringBuilder("[");
+		for (String p : c.getPrintPieces()) {
+			for (char ch : p.toCharArray()) {
+				s.append(ch < ' ' ? '%' : ch == '(' ? '{' : ch == ')' ? '}' : ch == ',' ? ';' : ch);
+			}
+		}
+		s.append('|');
+		for (int i = 0; i < c.getNumOperands(); i++) {
+			s.append(i > 0 ? ";" : "").append(c.getOperand(i).getName());
+		}
+		return s.append('|').append(c.getMinimumLength()).append(']').toString();
 	}
 
 	private String form(Instruction in) {

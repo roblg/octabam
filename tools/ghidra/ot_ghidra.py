@@ -646,6 +646,30 @@ def cf_lint_inputs(built, work):
     (work / "MAIN_OS.in").write_text("\n".join(lines) + "\n")
 
 
+def form_components(key):
+    """The parts of an encoding the chip decodes on their own.
+
+    A parallel instruction (`mnemonic instr:[...|ALU;ALUm;ALUW;PM|...](...)`)
+    is its ALU op and its parallel move, each from its own field, so a stock
+    op with a stock move is not new even in a pairing stock never uses. Any
+    other instruction is one part: its whole tree."""
+    mn, _, rest = key.partition(" ")
+    if not rest.startswith("instr:") or "|ALU;ALUm;ALUW;PM|" not in rest.split("](", 1)[0]:
+        return {key}
+    body = rest.split("](", 1)[1][:-1]
+    parts, depth, cur = [], 0, ""
+    for ch in body:
+        depth += 1 if ch in "([" else -1 if ch in ")]" else 0
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    alu = " ".join(p for p in parts if p.startswith("ALU"))
+    return {f"alu {mn} {alu}"} | {f"pm {p}" for p in parts if p.startswith("PM")}
+
+
 def read_out(path):
     rows = []
     for line in path.read_text().splitlines():
@@ -674,7 +698,8 @@ def cmd_lint(args):
     if not (proj / f"{args.name}.gpr").exists():
         print(f"[lint] no stock project at {proj / args.name}.gpr: importing it first (once; a few minutes)")
         args.only, args.no_analysis = None, False
-        cmd_import(args)
+        stock_args = argparse.Namespace(**{**vars(args), "image": None})   # the stock programs only, no REMIX
+        cmd_import(stock_args)
     work = OUT / "lint"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
@@ -713,12 +738,16 @@ def cmd_lint(args):
                 findings.append((row[1], f"{prog}:{row[2]}", row[3], (row[4].split() if len(row) > 4 else [])))
             elif row[0] == "note":
                 log(f"{prog}: {row[1]}")
-    for key, sites in sorted(built_forms.items(), key=lambda kv: kv[1][0][0]):
-        if key not in stock_forms:
-            where = ", ".join(f"{a} `{t.strip()}`" for t, a in sites[:4])
-            findings.append(("novel-form", key,
-                             f"an encoding neither stock payload uses: {where}"
-                             + (f" and {len(sites) - 4} more" if len(sites) > 4 else "")))
+    stock_parts = set().union(*(form_components(k) for k in stock_forms)) if stock_forms else set()
+    new_parts = {}
+    for key, sites in built_forms.items():
+        for part in form_components(key) - stock_parts:
+            new_parts.setdefault(part, []).extend(sites)
+    for part, sites in sorted(new_parts.items(), key=lambda kv: kv[1][0][0]):
+        where = ", ".join(f"{a} `{t.strip()}`" for t, a in sites[:4])
+        findings.append(("novel-form", part,
+                         f"an encoding neither stock payload uses: {where}"
+                         + (f" and {len(sites) - 4} more" if len(sites) > 4 else "")))
     bad = 0
     for check, key, text, *rest in findings:
         w = waived(check, key, waivers, rest[0] if rest else ())
