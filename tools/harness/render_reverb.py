@@ -300,7 +300,7 @@ def _guarded(mem):
     try:
         sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
         from remix import registry
-        r = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+        r = registry.remix(os.environ.get("REMIX"))
         return "REVERB SERVER" in r.hidden
     except Exception:
         return False

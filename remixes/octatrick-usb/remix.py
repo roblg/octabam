@@ -18,7 +18,7 @@ REMIX = Remix(
     family="mods", proof=Proof.HARDWARE, proof_note="Tim's MKI, 26 Sep 2026 (OCTATRICK9), USB audio on all 20 channels",
     doc="SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + USB MIDI + USB AUDIO on the stock effects.",
     modules=("DIRECT JUMP", "SCALE QUANTIZER", "SYNTH MACHINE",
-             "USB MIDI", "USB AUDIO",
+             "USB MIDI", "USB AUDIO EXTENDED",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),

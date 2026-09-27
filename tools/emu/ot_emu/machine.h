@@ -395,6 +395,12 @@ namespace ot
 		// beside it for hits it saw.
 		struct PcHit { uint64_t instruction; uint32_t pc, d0, d1, a0, a1, sp, stack[5]; uint32_t d[8], a[7]; };	// d/a: every register (O9b: a watch that showed four of them could not say which record a routine read)
 		void watchPc(std::vector<uint32_t> _addrs) { m_watchPc = std::move(_addrs); }
+		// One counted address, compared before every instruction on every step
+		// path (an odd address never matches): the Rtos counts the engine's
+		// LOAD PROJECT entry across a load it did not watch instruction by
+		// instruction. Separate from watchPc so --watch-pc's hit list is untouched.
+		void countPc(const uint32_t _addr) { m_pcCountAddr = _addr; m_pcCount = 0; }
+		uint64_t pcCount() const { return m_pcCount; }
 
 		// ✅ THE DSP HOST PORT, RECORDED. The firmware programs the DSPs
 		// ITSELF -- `0x40001e50` (called once, from the boot at `0x4000050c`)
@@ -619,6 +625,8 @@ namespace ot
 		bool m_hostPortLogOn = false;
 		std::vector<HostPortWrite> m_hostPortLog;
 		std::vector<uint32_t> m_watchPc;
+		uint32_t m_pcCountAddr = 1;
+		uint64_t m_pcCount = 0;
 		std::vector<PcHit> m_pcHits;
 		uint32_t m_profileEvery = 0;
 		std::unordered_map<uint32_t, uint64_t> m_profile;

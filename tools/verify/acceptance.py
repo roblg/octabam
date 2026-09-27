@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-"""Strict, local acceptance evidence. Never flashes a unit or publishes artifacts."""
+"""Strict, local acceptance evidence. Never flashes a unit or publishes artifacts.
+
+    python3 tools/verify/acceptance.py --remix <name> [<name> ...] (--project DIR | --stress-source DIR)
+    make accept REMIX=<name> STRESS_SOURCE=<dir>
+    make accept REMIXES="a b c" STRESS_SOURCE=<dir>
+
+Gates, in order: preflight and fixture per remix; `make check-shared` ONCE
+for every remix that passed them (the remix-independent half: the ledger
+selftest, the knob census, the isolated module gates); then per remix
+`make check-remix` with its project, the static cycle report, the
+pressure price and the pressure render on its own restored image. One
+remix's report is at --out; several are at --out/<remix>/report.json with
+the shared half's log beside them and summary.json over all.
+"""
 import argparse
 import datetime as dt
 import hashlib
@@ -19,7 +32,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import toolpath  # noqa: E402,F401
 from remix import registry  # noqa: E402
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 # A skip means missing evidence, even if the child returns zero. [N/A] is
 # reserved for an explicit inapplicable branch in a verifier.
 SKIP = re.compile(r"^\s*(?:\[SKIP\]|SKIP:)", re.M)
@@ -143,16 +156,18 @@ def budget_result(data):
 
 
 def pressure_profile(modules):
-    # pressure.py's DEAR/ODD and the opposite-core SEND fixture only cover
-    # the existing rig. Do not quietly run unknown modules at default knobs.
-    from pressure import DEAR
-    dsp_keys = {m.key for m in modules if m.dsp is not None}
-    if not dsp_keys:
+    """Ready when every DSP module of the selection declares its dearest
+    settings (schema.Module.dear); blocked, by name, when one does not. A
+    module is never rendered at default knobs and called covered."""
+    dsp = [m for m in modules if m.dsp is not None]
+    if not dsp:
         return "not_applicable", "remix has no DSP modules"
-    if dsp_keys != set(DEAR):
-        return "blocked", ("no pressure profile for this DSP selection; "
-                           "the current profile requires " + ", ".join(sorted(DEAR)))
-    return "ready", "bamsep26 station/bus pressure profile"
+    missing = sorted(m.key for m in dsp
+                     if getattr(m, "params", ()) and not getattr(m, "dear", None))
+    if missing:
+        return "blocked", ("no dearest settings (schema.Module.dear) for "
+                           + ", ".join(missing))
+    return "ready", "every DSP module declares its dearest settings: " + ", ".join(sorted(m.key for m in dsp))
 
 
 def pressure_evidence_error(rows, price):
@@ -190,13 +205,202 @@ def write_report(out, report):
     tmp.replace(out / "report.json")
 
 
+GATES = ("preflight", "fixture", "check_shared", "check_remix", "cycles", "pressure_price", "pressure_render")
+
+
+class Run:
+    """One remix's report: its gates, its output directory, its environment."""
+
+    def __init__(self, remix, out, env, timeout):
+        self.remix, self.out, self.timeout = remix, out, timeout
+        self.env = dict(env, REMIX=remix)
+        self.out.mkdir(parents=True, exist_ok=True)
+        self.report = dict(schema_version=SCHEMA_VERSION, remix=remix,
+                           started_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+                           status="blocked", validation_level="local-emulator",
+                           hardware_validated=False, limitations=LIMITATIONS,
+                           gates=[dict(name=n, status="not_run") for n in GATES],
+                           provenance={}, modules=[], fixtures={}, measurements={})
+        self.project = None
+        self.profile = self.reason = None
+        self.stopped = False
+        write_report(self.out, self.report)
+
+    def record(self, result):
+        self.report["gates"][GATES.index(result["name"])] = result
+        write_report(self.out, self.report)
+        ok = result["status"] in ("passed", "not_applicable")
+        if not ok:
+            self.stopped = True
+        return ok
+
+    def run(self, name, command):
+        return self.record(run_gate(name, command, self.out, self.env, self.timeout))
+
+    def fail(self, exc):
+        self.report["gates"].append(dict(name="runner", status="failed", reason=str(exc)))
+        self.stopped = True
+
+    def finish(self):
+        self.report["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+        write_report(self.out, self.report)
+        print(f"acceptance: {self.remix}: {self.report['status']}: {self.out / 'report.json'}", flush=True)
+        return self.report["status"]
+
+
+RUNNER_ERRORS = (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, SystemExit)
+
+
+def preflight(r, args, provenance_data):
+    r.report["provenance"] = dict(provenance_data)
+    remix = registry.remix(r.remix)
+    modules = registry.selected(remix)
+    r.report["modules"] = [
+        dict(key=m.key, name=m.name, kind=m.kind.value,
+             manifest_sha256=(sha256(ROOT / "modules" / m.name / "manifest.py")
+                              if (ROOT / "modules" / m.name / "manifest.py").is_file() else None))
+        for m in modules]
+    r.profile, r.reason = pressure_profile(modules)
+    project = args.project
+    if project is None and args.stress_source is None and os.environ.get("OT_PROJECT"):
+        project = pathlib.Path(os.environ["OT_PROJECT"])
+    problems = []
+    if project is None and args.stress_source is None:
+        problems.append("provide --project / OT_PROJECT or --stress-source")
+    # A blocked pressure profile (a DSP module without `dear`) blocks the
+    # pressure stages, not the check stages: the report still carries the
+    # remix's check evidence, and says by name why it is blocked.
+    required = [ROOT / "out/raw/section_3_MAIN_OS.bin",
+                ROOT / "out/emu/ot_emu", ROOT / ".venv/bin/python3"]
+    if any(m.dsp is not None for m in modules):
+        required += [ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host",
+                     ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"]
+    problems += [f"missing prerequisite: {p}" for p in required if not p.is_file()]
+    r.project = project
+    r.record(dict(name="preflight", status="blocked" if problems else "passed",
+                  reasons=problems, pressure_profile=r.reason))
+
+
+def fixture(r, args):
+    if args.stress_source and r.profile != "ready":
+        # The stress fixture is the pressure fixture: every DSP module at its
+        # dearest settings. With nothing of ours to place the generator
+        # refuses; with a module that declares no `dear` it would place the
+        # module at settings nobody vouched for (CF METER on every FX2 slot
+        # silenced seven tracks, 28 Sep 2026). Either way the source project
+        # itself is the fixture, as an operator project would be.
+        r.project = args.stress_source
+        args = argparse.Namespace(stress_source=None)
+        note = f"source project as-is: {r.reason}"
+    else:
+        note = "operator-supplied project"
+    if args.stress_source:
+        source = args.stress_source.expanduser().resolve()
+        project = r.out / "STRESS"
+        if not r.run("fixture", [sys.executable, "tools/harness/stress_project.py",
+                                 "--remix", r.remix, "--source", str(source), "--out", str(project)]):
+            return
+        r.report["fixtures"]["source"] = {
+            p.name: sha256(p) for p in sorted(source.iterdir())
+            if p.is_file() and p.suffix in (".work", ".strd")}
+    else:
+        project = r.project.expanduser().resolve()
+        if not (project / "project.work").is_file() or not (project / "bank01.work").is_file():
+            r.record(dict(name="fixture", status="blocked", reason="project.work and bank01.work are required"))
+            return
+        r.record(dict(name="fixture", status="passed", reason=note))
+    r.project = project
+    r.report["fixtures"]["project"] = inventory(project)
+    r.report["fixtures"]["referenced_samples"] = sample_inventory(project)
+    r.env["OT_PROJECT"] = str(project)
+    r.report["parameters"] = dict(build=r.env["BUILD"], bank=r.env.get("OT_BANK"),
+                                  pressure=dict(top=6, sample=4, seed=1, seconds=2, frames=16))
+    r.report["measurements"]["units"] = dict(
+        dsp_static="static cycles/sample/core; contention omitted",
+        pressure_meter="emulated instructions/block and instructions/sample/core")
+    write_report(r.out, r.report)
+
+
+def check_shared(runs, out, env, timeout):
+    """The remix-independent half of make check, once for every live remix;
+    its one result is every report's check_shared gate, the log shared."""
+    names = " ".join(r.remix for r in runs)
+    shared_env = dict(env, REMIXES=names, REMIX=runs[0].remix)
+    result = run_gate("check_shared", ["make", "-j1", "check-shared", f"REMIXES={names}",
+                                       f"BUILD={env['BUILD']}"], out, shared_env, timeout)
+    for r in runs:
+        mine = dict(result)
+        for key in ("log", "stdout"):
+            mine[key] = os.path.relpath(out / result[key], r.out)
+        r.record(mine)
+
+
+def remix_stages(r):
+    """check-remix with the project, the static cycle report, the pressure
+    price and the pressure render, each on this remix's own image."""
+    if not r.run("check_remix", ["make", "-j1", "check-remix", f"REMIX={r.remix}",
+                                 f"BUILD={r.env['BUILD']}", f"OT_PROJECT={r.project}"]):
+        return
+    # Preserve the exact restored image for every pressure invocation.
+    image = r.out / "image.bin"
+    shutil.copy2(ROOT / "out/mainos_bus.bin", image)
+    r.report["provenance"]["image_sha256"] = sha256(image)
+    if not r.run("cycles", [sys.executable, "tools/build/cycle_count.py", "--json"]):
+        return
+    data = json.loads((r.out / "cycles.stdout").read_text())
+    r.report["measurements"]["dsp_static"] = data
+    cycle_gate = r.report["gates"][GATES.index("cycles")]
+    cycle_gate["status"] = budget_result(data)
+    if not r.record(cycle_gate):
+        return
+    if r.profile in ("not_applicable", "blocked"):
+        for name in ("pressure_price", "pressure_render"):
+            r.record(dict(name=name, status=r.profile, reason=r.reason))
+        return
+    pressure_out = r.out / "pressure"
+    if not r.run("pressure_price", [sys.executable, "tools/harness/pressure.py",
+                                    "price", "--remix", r.remix, "--out", str(pressure_out)]):
+        return
+    price = json.loads((pressure_out / f"{r.remix}_price.json").read_text())
+    r.report["measurements"]["pressure_price"] = price
+    if any(core["over"] for core in price["cores"].values()):
+        gate = r.report["gates"][GATES.index("pressure_price")]
+        gate.update(status="failed", reason="selectable layouts exceed the static DSP wall")
+        r.record(gate)
+        return
+    # Deterministic, non-silent input on ALL eight tracks, no external audio.
+    from stress_project import make_sample
+    stems = r.out / "stems"
+    stems.mkdir()
+    for track in range(1, 9):
+        make_sample(stems / f"T{track}.wav")
+    r.report["fixtures"]["stems"] = inventory(stems)
+    rendered_ok = r.run("pressure_render", [sys.executable, "tools/harness/pressure.py",
+                                            "render", "--remix", r.remix, "--image", str(image),
+                                            "--out", str(pressure_out), "--stems", str(stems),
+                                            "--top", "6", "--sample", "4", "--seed", "1",
+                                            "--seconds", "2"])
+    result_file = pressure_out / f"{r.remix}_render.json"
+    rendered = json.loads(result_file.read_text()) if result_file.is_file() else []
+    r.report["measurements"]["pressure_render"] = rendered
+    if not rendered_ok:
+        return
+    evidence_error = pressure_evidence_error(rendered, price)
+    if evidence_error:
+        gate = r.report["gates"][GATES.index("pressure_render")]
+        gate.update(status="failed", reason=evidence_error)
+        r.record(gate)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
-    fixture = ap.add_mutually_exclusive_group()
-    fixture.add_argument("--project", type=pathlib.Path)
-    fixture.add_argument("--stress-source", type=pathlib.Path,
-                         help="generate the bamsep26 fixture from a local project")
+    ap.add_argument("--remix", nargs="+",
+                    default=(os.environ.get("REMIXES") or os.environ.get("REMIX") or "").split() or None,
+                    help="one remix, or several: the remix-independent half of make check runs once")
+    fixture_group = ap.add_mutually_exclusive_group()
+    fixture_group.add_argument("--project", type=pathlib.Path)
+    fixture_group.add_argument("--stress-source", type=pathlib.Path,
+                               help="generate each remix's stress fixture from a local project")
     ap.add_argument("--out", type=pathlib.Path,
                     default=ROOT / "out/acceptance" / dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
     ap.add_argument("--timeout", type=int, default=3600, help="seconds per command")
@@ -206,146 +410,55 @@ def main(argv=None):
     out = args.out.resolve()
     if out.exists():
         ap.error("--out already exists; choose a fresh directory to avoid stale evidence")
+    if not args.remix:
+        ap.error("--remix is required (or REMIX / REMIXES in the environment)")
+    remixes = list(dict.fromkeys(args.remix))
     out.mkdir(parents=True)
-    names = ("preflight", "fixture", "check", "cycles", "pressure_price", "pressure_render")
-    report = dict(schema_version=SCHEMA_VERSION, remix=args.remix,
-                  started_at=dt.datetime.now(dt.timezone.utc).isoformat(),
-                  status="blocked", validation_level="local-emulator",
-                  hardware_validated=False, limitations=LIMITATIONS,
-                  gates=[dict(name=n, status="not_run") for n in names],
-                  provenance={}, modules=[], fixtures={}, measurements={})
 
-    def record(result):
-        report["gates"][names.index(result["name"])] = result
-        write_report(out, report)
-        return result["status"] in ("passed", "not_applicable")
-
-    env = dict(os.environ, REMIX=args.remix)
+    env = dict(os.environ)
     # Serialize recursive Make even when this runner is invoked by make -j.
-    env.pop("MAKEFLAGS", None)
-    env.pop("MFLAGS", None)
-    env.pop("MAKEOVERRIDES", None)
+    for var in ("MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES"):
+        env.pop(var, None)
     env.setdefault("BUILD", "0")
 
-    def run(name, command):
-        return record(run_gate(name, command, out, env, args.timeout))
-
+    # One remix: the report at --out, as before. Several: --out/<remix>/
+    # each, the shared half's log beside them, summary.json over all.
+    runs = [Run(name, out if len(remixes) == 1 else out / name, env, args.timeout) for name in remixes]
     try:
-        report["provenance"] = provenance()
-        remix = registry.remix(args.remix)
-        modules = registry.selected(remix)
-        report["modules"] = [
-            dict(key=m.key, name=m.name, kind=m.kind.value,
-                 manifest_sha256=(sha256(ROOT / "modules" / m.name / "manifest.py")
-                                  if (ROOT / "modules" / m.name / "manifest.py").is_file() else None))
-            for m in modules]
-        profile, reason = pressure_profile(modules)
-        project = args.project
-        if project is None and args.stress_source is None and os.environ.get("OT_PROJECT"):
-            project = pathlib.Path(os.environ["OT_PROJECT"])
-        problems = []
-        if project is None and args.stress_source is None:
-            problems.append("provide --project / OT_PROJECT or --stress-source")
-        if args.stress_source and args.remix != "bamsep26":
-            problems.append("the generated stress fixture is for bamsep26 only")
-        if profile == "blocked":
-            problems.append(reason)
-        required = [ROOT / "out/raw/section_3_MAIN_OS.bin",
-                    ROOT / "out/emu/ot_emu", ROOT / ".venv/bin/python3"]
-        if any(m.dsp is not None for m in modules):
-            required += [ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host",
-                         ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"]
-        problems += [f"missing prerequisite: {p}" for p in required if not p.is_file()]
-        if not record(dict(name="preflight", status="blocked" if problems else "passed",
-                           reasons=problems, pressure_profile=reason)):
-            return 1
-
-        if args.stress_source:
-            project = out / "STRESS"
-            if not run("fixture", [sys.executable, "tools/harness/stress_project.py",
-                                   "--source", str(args.stress_source.expanduser().resolve()),
-                                   "--out", str(project)]):
-                return 1
-            report["fixtures"]["source"] = {
-                p.name: sha256(p) for p in sorted(args.stress_source.expanduser().resolve().iterdir())
-                if p.is_file() and p.suffix in (".work", ".strd")}
-        else:
-            project = project.expanduser().resolve()
-            if not (project / "project.work").is_file() or not (project / "bank01.work").is_file():
-                record(dict(name="fixture", status="blocked", reason="project.work and bank01.work are required"))
-                return 1
-            record(dict(name="fixture", status="passed", reason="operator-supplied project"))
-        report["fixtures"]["project"] = inventory(project)
-        report["fixtures"]["referenced_samples"] = sample_inventory(project)
-        env["OT_PROJECT"] = str(project)
-        report["parameters"] = dict(build=env["BUILD"], bank=env.get("OT_BANK"),
-                                    pressure=dict(top=6, sample=4, seed=1, seconds=2, frames=16))
-        report["measurements"]["units"] = dict(
-            dsp_static="static cycles/sample/core; contention omitted",
-            pressure_meter="emulated instructions/block and instructions/sample/core")
-        write_report(out, report)
-
-        if not run("check", ["make", "-j1", "check", f"REMIX={args.remix}",
-                              f"BUILD={env['BUILD']}", f"OT_PROJECT={project}"]):
-            return 1
-        # Preserve the exact restored image for every pressure invocation.
-        image = out / "image.bin"
-        shutil.copy2(ROOT / "out/mainos_bus.bin", image)
-        report["provenance"]["image_sha256"] = sha256(image)
-        if not run("cycles", [sys.executable, "tools/build/cycle_count.py", "--json"]):
-            return 1
-        data = json.loads((out / "cycles.stdout").read_text())
-        report["measurements"]["dsp_static"] = data
-        cycle_gate = report["gates"][names.index("cycles")]
-        cycle_gate["status"] = budget_result(data)
-        if not record(cycle_gate):
-            return 1
-        if profile == "not_applicable":
-            for name in ("pressure_price", "pressure_render"):
-                record(dict(name=name, status="not_applicable", reason=reason))
-            return 0
-        pressure_out = out / "pressure"
-        if not run("pressure_price", [sys.executable, "tools/harness/pressure.py",
-                                     "price", "--remix", args.remix, "--out", str(pressure_out)]):
-            return 1
-        price = json.loads((pressure_out / f"{args.remix}_price.json").read_text())
-        report["measurements"]["pressure_price"] = price
-        if any(core["over"] for core in price["cores"].values()):
-            gate = report["gates"][names.index("pressure_price")]
-            gate.update(status="failed", reason="selectable layouts exceed the static DSP wall")
-            record(gate)
-            return 1
-        # Deterministic, non-silent input on ALL eight tracks, no external audio.
-        from stress_project import make_sample
-        stems = out / "stems"
-        stems.mkdir()
-        for track in range(1, 9):
-            make_sample(stems / f"T{track}.wav")
-        report["fixtures"]["stems"] = inventory(stems)
-        rendered_ok = run("pressure_render", [sys.executable, "tools/harness/pressure.py",
-                                             "render", "--remix", args.remix, "--image", str(image),
-                                             "--out", str(pressure_out), "--stems", str(stems),
-                                             "--top", "6", "--sample", "4", "--seed", "1",
-                                             "--seconds", "2"])
-        result_file = pressure_out / f"{args.remix}_render.json"
-        rendered = json.loads(result_file.read_text()) if result_file.is_file() else []
-        report["measurements"]["pressure_render"] = rendered
-        if not rendered_ok:
-            return 1
-        evidence_error = pressure_evidence_error(rendered, price)
-        if evidence_error:
-            gate = report["gates"][names.index("pressure_render")]
-            gate.update(status="failed", reason=evidence_error)
-            record(gate)
-            return 1
-        return 0
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, SystemExit) as exc:
-        report["gates"].append(dict(name="runner", status="failed", reason=str(exc)))
-        return 1
-    finally:
-        report["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-        write_report(out, report)
-        print(f"acceptance: {report['status']}: {out / 'report.json'}", flush=True)
+        provenance_data = provenance()
+    except RUNNER_ERRORS as exc:
+        provenance_data = {}
+        for r in runs:
+            r.fail(exc)
+    for r in runs:
+        if r.stopped:
+            continue
+        try:
+            preflight(r, args, provenance_data)
+            if not r.stopped:
+                fixture(r, args)
+        except RUNNER_ERRORS as exc:
+            r.fail(exc)
+    live = [r for r in runs if not r.stopped]
+    if live:
+        try:
+            check_shared(live, out, env, args.timeout)
+        except RUNNER_ERRORS as exc:
+            for r in live:
+                r.fail(exc)
+    for r in live:
+        if r.stopped:
+            continue
+        try:
+            remix_stages(r)
+        except RUNNER_ERRORS as exc:
+            r.fail(exc)
+    statuses = {r.remix: r.finish() for r in runs}
+    if len(runs) > 1:
+        (out / "summary.json").write_text(json.dumps(statuses, indent=2) + "\n", encoding="utf-8")
+        print(f"acceptance: {sum(s == 'passed' for s in statuses.values())} of {len(runs)} passed: {out / 'summary.json'}",
+              flush=True)
+    return 0 if all(s == "passed" for s in statuses.values()) else 1
 
 
 if __name__ == "__main__":

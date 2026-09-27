@@ -1,4 +1,4 @@
-"""rig-mods -- bamsep26 + MIDI SCENES + Octakit (bridged).
+"""rig-mods -- the rig + MIDI SCENES + Octakit (bridged).
 
 No LO-FI AMF fix (Character replaces LO-FI). The rig-kits caveat applies:
 the hosts' part bytes against her migration are unmeasured. Back up

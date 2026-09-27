@@ -1,4 +1,4 @@
-"""rig-kits -- bamsep26 + Octakit (SCENES KITS bridges CC MAP and Octakit).
+"""rig-kits -- the rig + Octakit (SCENES KITS bridges CC MAP and Octakit).
 
 No LO-FI AMF fix (Character replaces LO-FI). Unmeasured: whether the part
 bytes that place the rig's hosts (ot_project.py stamp-defaults) survive

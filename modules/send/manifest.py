@@ -14,7 +14,7 @@ plain-numeric zeros (hardware-confirmed). REV took blank slot 1 on 25 Sep
 (`ot_project.py stamp-slot <project> SEND REV`).
 """
 
-from remix.schema import (Category, Proof, BusRole, YBase, DspSection, Harness, Kind, MenuEntry,
+from remix.schema import (Gate, Category, Proof, BusRole, YBase, DspSection, Harness, Kind, MenuEntry,
                           Module, Param)
 
 _BLANK = Param(b"", None, active=False)
@@ -62,4 +62,7 @@ MODULE = Module(
     # housekeeping block, so an image containing it HAS a bus. That is what
     # forbids schema.NO_FALLBACK beside it.
     harness=Harness(layout_char="S", is_server=False, bus_client=True),
+    # the rig burn: SKIPs, loudly, in a remix without both servers
+    gates=(Gate('tools/verify/verify_burn.py'),),
+    dear={'DEL': 100, 'REV': 100},
 )

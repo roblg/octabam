@@ -182,4 +182,10 @@ target_link_libraries(ot_euclid_test PRIVATE ot_machine)
 add_executable(ot_tapeecho_cpu_test ../../harness/tapeecho_cpu_probe.cpp
     ../../../modules/tapeecho/cpu.c)
 target_compile_definitions(ot_tapeecho_cpu_test PRIVATE TE_HOST=1)
+# The host oracle is Tape Echo's cpu.c compiled natively; its mix arithmetic
+# overflows int32 on a steep negative MIX ramp (cpu.c 251/303/305, UBSan
+# 27 Sep 2026), which is undefined in C and which clang's optimiser exploits
+# ("tape output mismatch 3/16 (mode 3)") while the ColdFire kernel wraps.
+# -fwrapv makes the oracle wrap the way the target does.
+target_compile_options(ot_tapeecho_cpu_test PRIVATE -fwrapv)
 target_link_libraries(ot_tapeecho_cpu_test PRIVATE ot_machine)

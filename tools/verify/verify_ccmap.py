@@ -24,15 +24,21 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
-import emu_bringup as emu
-from unicorn import UC_HOOK_CODE
-from unicorn.m68k_const import UC_M68K_REG_PC
+try:
+    import emu_bringup as emu
+    from unicorn import UC_HOOK_CODE
+    from unicorn.m68k_const import UC_M68K_REG_PC
+except ImportError:
+    print("  [SKIP] verify_ccmap: no unicorn (the .venv: make emu-setup)")
+    sys.exit(0)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CAVE_AT = 0x40300000            # a fresh RWX page, away from the OS image
 STOCK_CC = 0x4000e79c
 MSG_AT = 0x47e00000            # scratch for the 3-byte MIDI message
-FIXTURE_REMIX = "bamsep26"     # carries cc-map, BusVerb, BusDelay and Character; no DRAM platform
+from remix import registry  # noqa: E402
+# CC MAP on the two hosts and a station, under unicorn: no DRAM runtime.
+FIXTURE_REMIX = registry.fixture("CC MAP", "REVERB SERVER", "DELAY SERVER", "CHARACTER", without_runtime=True)
 
 
 def _build(remix):

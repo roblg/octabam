@@ -61,7 +61,7 @@ FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
 FX1_NONE = 0x400d4618
 FX1_ROWCOUNT_AT = 0x40059be6            # FX1's viewport literal
 
-REMIX = _reg.remix(os.environ.get("REMIX") or _reg.DEFAULT_REMIX)
+REMIX = _reg.remix(os.environ.get("REMIX"))
 _MODS = _reg.modules()
 NO_WIDGET = 0x4005692e          # build_bus.NO_WIDGET: a stock rts, past a host page's slots
 # A HIDDEN module (schema.Remix.hidden) is carried but takes no chooser row,

@@ -1,6 +1,6 @@
 # `bottleservice` — the rig, USB, Octakit
 
-[`usb-audio`](../usb/README.md) (the rig + USB MIDI + USB AUDIO) with Em's Octakit
+The rig with USB MIDI, USB AUDIO MASTER (track 8 over USB) and Em's Octakit
 (256 Kits per Project in place of Parts) and the SCENES KITS bridge that
 lets CC MAP and Octakit share the MIDI CC dispatch entry. Sam's own
 selection; named after the set it is built for.
@@ -9,7 +9,12 @@ selection; named after the set it is built for.
 
 - Everything in [`usb-audio`](../usb/README.md): the bus (BusDelay on T1, BusVerb on
   T5, SEND elsewhere), the three FX1 stations, TEMPO SYNC, CC MAP, MODE
-  DEFAULTS, RIG HOSTS, TEMPO BUS, USB MIDI, USB AUDIO.
+  DEFAULTS, RIG HOSTS, TEMPO BUS, USB MIDI.
+- **USB AUDIO MASTER** in place of `usb-audio`'s twenty channels: a
+  two-channel 44.1 kHz 24-bit input carrying track 8's L/R, post-FX,
+  pre-fader (the master track), at both USB speeds.
+  [`modules/usb-audio-master/README.md`](../../modules/usb-audio-master/README.md).
+  Port only.
 - **OCTAKIT** (Em, [ems-octakit](https://github.com/emuyia/ems-octakit)):
   [`modules/octakit/README.md`](../../modules/octakit/README.md). Her
   runtime takes the top 528 pages of the sample arena (3.2 MB); the USB
@@ -19,7 +24,7 @@ selection; named after the set it is built for.
 - **SCENES P2** (Sam Banks) — scene locks and the crossfader on page 2 of FX1 and FX2: hold a scene and turn a page-2 knob (FUNC + turn removes the lock); the fader lerps locked page-2 slots into the DSP frame, a select snapping at the midpoint; locks follow scene copy / paste / clear / undo and travel in the Part. Port only (`modules/scenes-p2/README.md`).
 - **SCENES P2 KITS** (Sam Banks) — the bridge over Octakit's page-2 editor wrappers: a held-scene turn writes the lock pool and never enters her wrapper; every other turn reaches it whole.
 
-DSP side identical to `bamsep26` (payload A 430 words free, B 1,128;
+DSP side identical to `bottleservice` (payload A 430 words free, B 1,128;
 worst core priced 2,792 of 3,120). Image 1.19 MB.
 
 ## Status
@@ -46,4 +51,4 @@ worst core priced 2,792 of 3,120). Image 1.19 MB.
 As [`usb-audio`](../usb/README.md#build-and-flash) with `REMIX=bottleservice`. **Back
 up projects first**: Octakit migrates Parts to Kits on load and downgrading
 may lose Kit data (her README). After the flash, on old projects:
-`ot_project.py host` / `stamp-defaults` as for `bamsep26`.
+`ot_project.py host` / `stamp-defaults` as for `bottleservice`.

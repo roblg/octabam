@@ -196,7 +196,7 @@ def run_case(a, name, machine, tstr, tsmode, ptch, image, rate=127):
     stage(work / "project", card, wav)
     dumps = work / "state.bin", work / "voices.bin", work / "lanes.bin", work / "tempo.bin"
     cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", "OCTABAM", "--project", "RIG",
-           "--sequencer", "--internal-clock", "--frames", str(a.frames), "--load-ms", "20000",
+           "--sequencer", "--internal-clock", "--frames", str(a.frames), "--load-ms", "90000",
            "--dsp", "--main-level", "64", "--audio-out", str(work / "port"),
            "--watch-mem", f"{POSITION:#x},4",
            "--mem-dump", f"{STATE:#x},320={dumps[0]};{VOICE:#x},1344={dumps[1]};"

@@ -53,7 +53,7 @@ def echo_spacing(path):
 
 
 def main():
-    remix = sys.argv[1] if len(sys.argv) > 1 else registry.DEFAULT_REMIX
+    remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     if "DELAY SERVER" not in registry.remix(remix).modules:
         print(f"  [ -- ] verify_tempo: {remix} carries no BusDelay")
         return 0

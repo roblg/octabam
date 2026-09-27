@@ -27,7 +27,7 @@ the FX1 editor likewise for a station. Not measured: the panel redraw on
 hardware.
 """
 
-from remix.schema import Category, Proof, Detour, Kind, Linked, Module
+from remix.schema import Gate, Category, Proof, Detour, Kind, Linked, Module
 
 H = bytes.fromhex
 
@@ -67,4 +67,5 @@ MODULE = Module(
         Detour(0x4003ACF2, H("4eb940027e00"), "modedef", "fx1_hook",
                "FX1 page-2 editor: after the Part store, apply the mode's view", kind="jsr"),
     ),
+    gates=(Gate('tools/verify/verify_modedefaults.py'),),
 )

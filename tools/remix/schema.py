@@ -491,6 +491,36 @@ class Harness:
 
 
 @dataclass(frozen=True)
+class Gate:
+    """One check `make check` runs because this module is in the remix.
+
+    `make verify` used to list every module's verifier by hand, each one
+    written to SKIP when the remix lacked its module; a new module meant a
+    Makefile edit and every remix ran all of them. The module names its
+    own now (tools/verify/module_gates.py collects the selection's, runs
+    each once, and refuses a script that does not exist).
+
+    `stage` says what the script expects on disk: "isolated" gates build
+    their own scratch image (or none) and run before the selected image is
+    restored; "image" gates read out/mainos_bus.bin and run after
+    `make bus REMIX=<name>` and the shared set gates (a gate that needs
+    verify_set's staged card is an image gate). The runner exports REMIX
+    and BUILD to every gate.
+    """
+
+    script: str                      # repo-relative
+    remix_arg: bool = True           # pass the remix name as argv[1]
+    venv: bool = False               # prefer .venv/bin/python3 (the port's python) when present
+    stage: str = "isolated"          # "isolated" | "image"
+
+    def __post_init__(self):
+        if self.stage not in ("isolated", "image"):
+            raise ValueError(f"Gate({self.script!r}): stage must be 'isolated' or 'image', not {self.stage!r}")
+        if not self.script.startswith("tools/") and not self.script.startswith("modules/"):
+            raise ValueError(f"Gate({self.script!r}): a repo-relative path under tools/ or modules/")
+
+
+@dataclass(frozen=True)
 class ModeView:
     """What ONE position of a module's MODE select renames and re-defaults.
 
@@ -806,6 +836,21 @@ class Module:
     author_url: str = ""         # the author's repository or profile
     proof: Proof | None = None
     proof_note: str = ""         # the unit, image and date; or the gate
+    # ---- the checks (make check, make accept) ------------------------------
+    # The verifiers `make check` runs when a remix carries this module
+    # (schema.Gate). Shared gates -- the ledger selftest, the menu, the
+    # dirty-state render, the set under the port -- stay in the Makefile.
+    gates: tuple[Gate, ...] = ()
+    # Every knob at its DEAREST setting, by the Param's own name: the modes
+    # the pricer calls the worst loop, and the knobs that gate work (a send
+    # at 0 registers nothing, MIX 0 short-circuits a stage) at their
+    # maximum. The pressure render (tools/harness/pressure.py) and the
+    # stress fixture (tools/harness/stress_project.py) read it; a DSP
+    # module without one BLOCKS `make accept` for every remix that carries
+    # it, by name, rather than being rendered at defaults. Validated
+    # against `params` at load, so a knob rename refuses the build instead
+    # of failing a fixture after the merge (PR #396 on #415).
+    dear: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.params and len(self.params) != 12:
@@ -889,6 +934,24 @@ class Module:
         # had drawn one there; stock's selects are all on page 2). BusVerb's
         # SHFT is the first (page-1 slot 4, linked to SHMR); image 29 drew it
         # with its words on the unit.
+        if self.dear:
+            if self.dsp is None:
+                raise ValueError(f"{self.name}: dear settings on a module with no DSP code")
+            km = self.knob_map()
+            for nm, val in self.dear.items():
+                if nm not in km:
+                    raise ValueError(f"{self.name}: dear names knob {nm!r}; its knobs are "
+                                     f"{', '.join(km) or 'none'}")
+                cnt = self.params[km[nm]].count or 128
+                if not isinstance(val, int) or not 0 <= val < cnt:
+                    raise ValueError(f"{self.name}: dear {nm}={val!r} is outside 0..{cnt - 1}")
+        seen_scripts = set()
+        for g in self.gates:
+            if not isinstance(g, Gate):
+                raise ValueError(f"{self.name}: gates holds {g!r}, not a schema.Gate")
+            if g.script in seen_scripts:
+                raise ValueError(f"{self.name}: gate {g.script} listed twice")
+            seen_scripts.add(g.script)
 
     def view_for(self, mode: int):
         """The ModeView for a MODE value, or None. Unknown values fall back
@@ -1065,9 +1128,10 @@ class Remix:
     tools/remix/stock.py. A stock effect NOT listed is not removed from the
     image -- its code, descriptor and dispatch stay stock, so an old project
     that selects it still runs it -- it just has no chooser row, which is
-    what every remix did to all fourteen of them before. Only
-    the three reverbs are actually consumed (their code is the donor region
-    every module packs into) and they cannot be listed.
+    what every remix did to all fourteen of them before. An effect on
+    neither chooser gives up its words (stock.harvested); the three reverbs
+    are the default room, and a listed effect the placer reaches is refused
+    by the build.
 
     THE FALLBACK IS NOT OPTIONAL, and it is the question a selective build
     forces. The FX2 chooser is one list shared by all eight tracks, and a

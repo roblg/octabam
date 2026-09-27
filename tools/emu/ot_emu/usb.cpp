@@ -461,6 +461,11 @@ namespace ot
 			m_speedHs = l.compare(6, 2, "hs") == 0;
 			_reply("ok\n");
 		}
+		else if(l.rfind("isohz ", 0) == 0)
+		{
+			m_isoHz = std::strtod(l.c_str() + 6, nullptr);
+			_reply("ok\n");
+		}
 		else if(l.rfind("poke ", 0) == 0 || l.rfind("call ", 0) == 0)
 		{
 			auto r = std::make_unique<Request>();

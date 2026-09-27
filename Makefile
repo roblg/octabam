@@ -19,10 +19,13 @@ BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
 
 # Which modules the image carries. `make modules` lists what is available;
-# remixes/<name>.py is the selection. bamsep26 is the rig and the default;
-# bus is the plain two-server image (BusVerb + BusDelay + send + tempo sync)
-# that scripts/refhash.sh proves build changes against.
-REMIX   ?= bamsep26
+# remixes/<name>/remix.py is the selection. There is no default: a target
+# that builds or checks an image takes REMIX=<name> (make modules lists
+# them) and refuses without it. A gate that needs a particular image asks
+# the registry for it by requirement (registry.fixture).
+define need-remix
+@test -n "$(REMIX)" || { echo "REMIX is unset: make $@ REMIX=<name>   (make modules lists them)"; exit 2; }
+endef
 # The project the set gates (verify_set, verify_modedefaults) run under the
 # port: OT_PROJECT=<dir> on the command line, else the path in
 # ~/.octabam_project (machine-local; card data never enters the repo).
@@ -56,15 +59,18 @@ recon: ## Unpack + static recon -> out/raw/section_3_MAIN_OS.bin
 
 .PHONY: bus
 bus: ## THE build: one server per core, cross-core bus -> out/mainos_bus.bin
+	$(need-remix)
 	@test -f out/raw/section_3_MAIN_OS.bin || { echo "missing out/raw/section_3_MAIN_OS.bin (the stock OS every build reads) -- run 'make os' then 'make recon'"; exit 1; }
 	REMIX=$(REMIX) BUILD=$(BUILD) XBUS=1 SPEC=1 python3 tools/build/build_bus.py
 
 .PHONY: bus-plain
 bus-plain: ## Build without specialization (both servers on both cores)
+	$(need-remix)
 	REMIX=$(REMIX) python3 tools/build/build_bus.py
 
 .PHONY: image
 image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLASHING.md); BUILD=N is required
+	$(need-remix)
 	@test "$(origin BUILD)" != "file" || { echo "make image needs BUILD=N (the version the panel shows; bump it every flash)"; exit 1; }
 	@test -f $(SYX) || { echo "missing $(SYX) — run 'make os'"; exit 1; }
 	@test -x $(EFT) || { echo "missing $(EFT) — run 'make setup'"; exit 1; }
@@ -86,11 +92,13 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLAS
 
 .PHONY: render
 render: ## Build the DEV image and render the bus locally (no hardware)
+	$(need-remix)
 	REMIX=$(REMIX) DEV=1 XBUS=1 SPEC=1 python3 tools/build/build_bus.py
 	python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
 
 .PHONY: render-delay
 render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay locally
+	$(need-remix)
 	@# No SPEC: a SPEC dump has no delay in payload A (id 0x06 -> SEND alias);
 	@# send_probe refuses to run a D layout against one. The delay lives at
 	@# P:0x04000 outside the donor region (appended to the .mem dump), so the
@@ -100,6 +108,7 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay 
 
 .PHONY: render-rig
 render-rig: bus ## Render ALL EIGHT TRACKS on both cores (the real image, tracks 1-4 on B, 5-8 on A). TRACKS=T1=D,T2=S,.. STEMS=dir
+	$(need-remix)
 	@# tools/harness/rig_render.py --help for --project/--set/--stem/--skew. The
 	@# image is this remix's `make bus`; both payloads are dumped from it.
 	python3 tools/harness/rig_render.py --image out/mainos_bus.bin --remix $(REMIX) \
@@ -112,6 +121,7 @@ verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, 
 
 .PHONY: emu-live
 emu-live: ## Play the remix on the port: screen (popups included) + panel in a window; OT_PROJECT or ~/.octabam_project
+	$(need-remix)
 	python3 tools/emu/live.py $(REMIX)
 
 # The virtual front panel (Tim Hastie's octa-panel, tools/panel/README.md):
@@ -123,6 +133,7 @@ PANEL_PORT ?= 8563
 PANEL_CARD ?= out/cards/$(notdir $(patsubst %/,%,$(OT_PROJECT))).img
 .PHONY: panel
 panel: ## The virtual front panel: REMIX on the port with sound at localhost:8563 (PANEL_PORT), a persistent card under out/cards; OT_PROJECT or ~/.octabam_project
+	$(need-remix)
 	@test -n "$(OT_PROJECT)" || { echo "make panel needs a project: OT_PROJECT=<dir> or a path in ~/.octabam_project"; exit 1; }
 	REMIX=$(REMIX) XBUS=1 SPEC=1 BUILD=$(BUILD) python3 tools/build/build_bus.py
 	@mkdir -p out/cards
@@ -149,7 +160,7 @@ emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boo
 verify-onebus: ## THE ONE AUX BUS on both cores: chain, each host's print, WET passthrough, T8 refusal, no station sends (~2 min)
 	python3 tools/verify/verify_onebus.py
 
-verify-knobs: ## KNOB CLICK CENSUS: every continuous knob of bamsep26's DSP modules moved mid-render, block-rate steps in dBFS (~1 min)
+verify-knobs: ## KNOB CLICK CENSUS: every continuous knob of the rig fixture's DSP modules moved mid-render, block-rate steps in dBFS (~1 min)
 	$(PY) tools/verify/verify_knob_clicks.py
 
 .PHONY: verify-midi
@@ -164,7 +175,8 @@ PORT ?= A
 
 .PHONY: port-compare
 port-compare: ## One part under the firmware (ot_emu) and under rig_render on the same input: make port-compare PROJECT=dir [IMAGE=out/mainos_bus.bin] [PCARGS='--tone out/o9d/kickAB_late.wav']
-	@test -n "$(PROJECT)" || { echo "usage: make port-compare PROJECT=out/o9d/proj_t1eqA [IMAGE=out/mainos_bus.bin REMIX=bamsep26] [PCARGS=...]"; exit 1; }
+	$(need-remix)
+	@test -n "$(PROJECT)" || { echo "usage: make port-compare PROJECT=out/o9d/proj_t1eqA [IMAGE=out/mainos_bus.bin REMIX=bottleservice] [PCARGS=...]"; exit 1; }
 	python3 tools/harness/port_compare.py --project $(PROJECT) --remix $(REMIX) $(if $(IMAGE),--image $(IMAGE)) $(PCARGS)
 
 .PHONY: reverb
@@ -176,6 +188,7 @@ reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=8
 
 .PHONY: cycles
 cycles: ## Cycle cost per effect against the measured per-core budget
+	$(need-remix)
 	REMIX="$(REMIX)" python3 tools/build/cycle_count.py
 
 .PHONY: benchmark-reverbs
@@ -199,72 +212,67 @@ modmap: ## DSP module load map — which bytes land at which P address
 	python3 tools/build/dsp_modmap.py
 
 .PHONY: verify
-verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it fits; it fits since the one-word displaced move, 14 Sep 2026)
-	@# FIRST, before the selftest rebuilds every remix over out/mainos_bus.bin
-	@# (the boot-verifier trap, AGENTS.md): a module started from a garbage
-	@# instance block must be silent on silence -- the unit's RAM is not zeroed.
-	python3 tools/verify/verify_dirtystate.py $(REMIX)
-	$(PY) tools/verify/verify_tapeecho_cpu.py $(REMIX)
-	python3 tools/verify/verify_miniverb.py $(REMIX)
+verify: verify-shared verify-remix ## The remix-independent gates, then the selected remix's own (schema.Gate; tools/verify/module_gates.py)
+
+# REMIXES: the remixes a run covers (default: the selected one). `make reach
+# RUN=1` runs verify-shared ONCE with every reached remix, then check-remix
+# per remix: the selftest, the knob census and the isolated module gates
+# that build their own image (remix_arg=False) do not depend on the remix,
+# and 25 checks used to repeat them 25 times (27 Sep 2026, ~3 h serially).
+REMIXES ?= $(REMIX)
+.PHONY: verify-shared
+verify-shared: ## The gates that do not depend on the remix: ledger selftest, slots, replaces, docs, label_fmt, knob census, remix-independent module gates (REMIXES="a b")
+	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
-	python3 tools/verify/verify_initregs.py $(REMIX)
 	python3 tools/verify/verify_replaces.py
 	python3 tools/verify/verify_docs.py
 	python3 tools/build/label_fmt.py
-	python3 tools/verify/verify_octakit.py
-	python3 tools/verify/verify_midiscenes.py
+	@# The knob click census: every continuous knob of the rig fixture's DSP
+	@# modules moved mid-render, plus the garbage-start gate. Builds its own
+	@# fixture (registry.fixture); remix-independent.
+	$(PY) tools/verify/verify_knob_clicks.py
+	@# Isolated module gates that take no remix: each renders its module on
+	@# a scratch image it builds itself, or checks an author's oracle. Run
+	@# once for the union of the modules across REMIXES.
+	BUILD=$(BUILD) $(PY) tools/verify/module_gates.py --shared $(REMIXES)
+
+.PHONY: verify-remix
+verify-remix: ## The selected remix's own gates: dirty state, init regs, DRAM boot, labels, its module gates, menu, the set under the port, USB
+	$(need-remix)
+	@# FIRST, before anything rebuilds over out/mainos_bus.bin (the
+	@# boot-verifier trap, AGENTS.md): a module started from a garbage
+	@# instance block must be silent on silence -- the unit's RAM is not zeroed.
+	python3 tools/verify/verify_dirtystate.py $(REMIX)
+	python3 tools/verify/verify_initregs.py $(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_dram_boot.py
-	python3 tools/verify/verify_usb.py
-	@# The four ColdFire-port checks need the .venv (make emu-setup). Without
+	@# The three ColdFire-port checks need the .venv (make emu-setup). Without
 	@# it they SKIP; with it a failure FAILS (until 16 Sep 2026 `|| echo SKIP`
 	@# swallowed every exit code, and verify_modenames had been failing since
 	@# image 27 behind a SKIP line).
 	@if [ -x .venv/bin/python3 ]; then \
 	  .venv/bin/python3 tools/verify/verify_labels.py $(REMIX) && \
 	  .venv/bin/python3 tools/verify/verify_modenames.py $(REMIX) && \
-	  REMIX=$(REMIX) BUILD=$(BUILD) .venv/bin/python3 tools/verify/verify_ccmap.py && \
 	  .venv/bin/python3 tools/verify/verify_hidden.py $(REMIX); \
-	else echo "  [SKIP] labels / mode names / cc map / hidden engines: no .venv (make emu-setup)"; fi
-	python3 tools/verify/verify_grains.py $(REMIX)
-	@# The station and insert gates: each renders its module through dsp_host
-	@# on a scratch image the audition builds (remix-independent; Character's
-	@# master path reads the shipping build and SKIPs when it lacks Character).
-	@# Not in make check until 16 Sep 2026 (run by hand after each station round).
-	python3 tools/verify/verify_character.py
-	python3 tools/verify/verify_spectrum.py
-	python3 tools/verify/verify_modulation.py
-	@# The knob click census: every continuous knob moved mid-render, plus
-	@# the garbage-start gate (a tone from block 0 on a garbage block).
-	$(PY) tools/verify/verify_knob_clicks.py
-	@# The isolated DSP gates build their own remixes over mainos_bus.bin.
+	else echo "  [SKIP] labels / mode names / hidden engines: no .venv (make emu-setup)"; fi
+	@# The module gates that take the remix (remix_arg=True) and build or
+	@# read its image; the remix-independent ones ran in verify-shared.
+	REMIX=$(REMIX) BUILD=$(BUILD) $(PY) tools/verify/module_gates.py $(REMIX) --stage isolated --remix-only
+	@# The isolated gates build their own remixes over mainos_bus.bin.
 	@# Restore the selected image before inspecting its chooser tables.
 	$(MAKE) bus REMIX=$(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
-	python3 tools/verify/verify_burn.py $(REMIX)
-	python3 tools/verify/verify_twocore.py
-	python3 tools/verify/verify_onebus.py
-	python3 tools/verify/verify_tempo.py $(REMIX)
-	@# REPITCH: its hooks through the firmware's own code, its page drawings,
-	@# and with OT_PROJECT a live tempo change under the port (SKIPs parts it
-	@# cannot run; a remix without REPITCH is a one-line pass).
-	python3 tools/verify/verify_repitch.py $(REMIX)
-	@# EUCLID: native control laws, executed ColdFire hooks, both DSP payloads,
-	@# panel dial rendering and (with OT_PROJECT) full playback under the port.
-	$(PY) tools/verify/verify_euclid.py $(REMIX)
 	@# A real project on the built image under the ColdFire port (ids, page-2
 	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_set.py $(REMIX)
-	@# A MODE turned on the panel re-defaults its knobs (the FX1 and FX2
-	@# page-2 editors called under the port); SKIPs without OT_PROJECT (above).
-	python3 tools/verify/verify_modedefaults.py $(REMIX)
-	@# TEMPO BUS: the TEMPO window's bus screen driven through the port's live
-	@# panel on verify_set's staged card; SKIPs without it (above).
-	python3 tools/verify/verify_tempobus.py $(REMIX)
-	@# SCENES P2: page-2 locks lerped into the DSP frame by the fader, and
-	@# the page-2 editor with a scene held writing the pool; SKIPs without
-	@# OT_PROJECT (above).
-	python3 tools/verify/verify_scenesp2.py $(REMIX)
+	@# The image-stage module gates read the selected image (and, TEMPO BUS,
+	@# the card verify_set staged). Rebuilt first: the set gate leaves its own
+	@# build at out/mainos_bus.bin.
+	$(MAKE) bus REMIX=$(REMIX)
+	@# The USB device model against the built image: stock's MSC function on
+	@# every image, the MIDI and audio functions when the remix carries them.
+	REMIX=$(REMIX) python3 tools/verify/verify_usb.py
+	REMIX=$(REMIX) BUILD=$(BUILD) $(PY) tools/verify/module_gates.py $(REMIX) --stage image
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]
@@ -301,6 +309,7 @@ verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: m
 
 .PHONY: burn
 burn: ## The RIG BURN image: the shipping remix + a cycle-burn knob on SEND's slot 2 (24 cycles/step, every core) -> out/mainos_bus.bin; `make burn-image BUILD=N` packs it
+	$(need-remix)
 	REMIX=$(REMIX) BUILD=$(BUILD) XBUS=1 SPEC=1 BURN=1 python3 tools/build/build_bus.py
 
 .PHONY: burn-image
@@ -317,6 +326,11 @@ burn-image: burn ## Repack the RIG BURN build into a card-flashable .bin (BUILD=
 	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION)B.syx"
 
 .PHONY: check
+.PHONY: check-remixes
+check-remixes: ## The per-remix half for REMIXES="a b c", JOBS=4 worktrees at a time (out/shards/<i>, each its own port build; logs in out/check_shards/)
+	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
+	BUILD=$(BUILD) python3 tools/verify/check_shards.py --jobs $(or $(JOBS),4) $(REMIXES)
+
 check: bus cycles verify ## Everything that can be checked without hardware (the set gates run under the port when OT_PROJECT or ~/.octabam_project names a project)
 	@# verify_burn.py shells out to build_bus.py twice -- with and without
 	@# BURN=1, neither with XBUS/SPEC -- and each run overwrites
@@ -327,20 +341,37 @@ check: bus cycles verify ## Everything that can be checked without hardware (the
 	@echo
 	@echo "  all runnable checks passed (a [SKIP] line above names what did not run); out/mainos_bus.bin restored to the shipping build"
 
+.PHONY: check-shared
+check-shared: verify-shared ## The remix-independent half of make check, once for REMIXES="a b c" (make reach RUN=1 uses it)
+
+.PHONY: check-remix
+check-remix: bus cycles verify-remix ## The per-remix half of make check: build, cycles and the remix's own gates
+	$(need-remix)
+	@$(MAKE) --no-print-directory bus >/dev/null
+	@echo
+	@echo "  $(REMIX): all runnable per-remix checks passed (a [SKIP] line above names what did not run); out/mainos_bus.bin restored to the shipping build"
+
 # Full local evidence; ordinary check remains useful for development.
-# STRESS_SOURCE copies a private project and generates the bamsep26 fixture.
+# STRESS_SOURCE copies a private project and generates the remix's stress fixture.
 .PHONY: accept
-accept: ## Strict local acceptance + JSON report (OT_PROJECT or STRESS_SOURCE required)
-	BUILD="$(BUILD)" python3 tools/verify/acceptance.py --remix "$(REMIX)" $(if $(STRESS_SOURCE),--stress-source "$(STRESS_SOURCE)",) $(ACCEPTARGS)
+accept: ## Strict local acceptance + JSON report: REMIX=<one>, or REMIXES="a b c" with the remix-independent half once (OT_PROJECT or STRESS_SOURCE required)
+	@test -n "$(REMIXES)" || { echo "REMIX is unset: make $@ REMIX=<name>, or REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
+	BUILD="$(BUILD)" python3 tools/verify/acceptance.py --remix $(REMIXES) $(if $(STRESS_SOURCE),--stress-source "$(STRESS_SOURCE)",) $(ACCEPTARGS)
 
 .PHONY: test-acceptance
-test-acceptance: ## Firmware-free tests of acceptance failures, skips and report handling
+test-acceptance: ## Firmware-free tests of the acceptance runner and the reach classifier
 	python3 -m unittest discover -s tools/verify/tests -p 'test_*.py' -v
+
+BASE ?= origin/main
+.PHONY: reach
+reach: ## The gates this branch's changes reach (the diff against BASE=origin/main); RUN=1 runs them in order, KEEP=1 every one then a table, JOBS=n the check-remix lines over n worktrees
+	python3 tools/verify/reach.py --base $(BASE) $(if $(RUN),--run,) $(if $(KEEP),--keep-going,) $(if $(JOBS),--jobs $(JOBS),) $(REACHARGS)
 
 .PHONY: modules
 modules: ## List the module index and the available remixes
 	python3 tools/remix/index.py
 
+.PHONY: docs
 docs: ## Render README.md's module table and docs/remixes/README.md from the manifests and the selections
 	python3 tools/remix/index.py --write
 
@@ -387,7 +418,7 @@ ci-emu: ## CI: build the ColdFire port (tools/emu/ot_emu) and run its unit tests
 	ctest --test-dir out/emu-ci --output-on-failure -E '^(rtos|dsp|repitch-stock|repitch-patch)$$'
 
 .PHONY: ci
-ci: test-acceptance ci-dsp ci-emu ## Everything CI runs, locally
+ci: reach test-acceptance ci-dsp ci-emu ## Everything CI runs, locally
 
 .PHONY: emu-setup
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
@@ -423,6 +454,15 @@ emu-card: ## Boot with an emulated CF card holding PROJECT and load it
 .PHONY: disasm
 disasm: ## Open radare2 on the decompressed ColdFire MAIN OS
 	scripts/disasm.sh
+
+.PHONY: ghidra
+ghidra: ## One Ghidra project: the MAIN OS and both DSP payloads (out/ghidra). GHIDRA=<install dir> [IMAGE=out/mainos_bus.bin]; tools/ghidra/README.md
+	python3 tools/ghidra/ot_ghidra.py import $(if $(GHIDRA),--ghidra $(GHIDRA)) $(if $(IMAGE),--image $(IMAGE))
+
+.PHONY: ghidra-install
+ghidra-install: ## A copy of a stock Ghidra 12.1.4 with the DSP56300 module and the ColdFire EMAC patch. GHIDRA=<stock install> [GHIDRA_DEST=dir]
+	@test -n "$(GHIDRA)" || { echo "usage: make ghidra-install GHIDRA=<stock Ghidra 12.1.4 install> [GHIDRA_DEST=dir]"; exit 1; }
+	tools/ghidra/install.sh $(GHIDRA) $(GHIDRA_DEST)
 
 .PHONY: where
 where: ## Every doc paragraph citing one ColdFire address + a disasm window. make where A=0x40004d40 [N=128]

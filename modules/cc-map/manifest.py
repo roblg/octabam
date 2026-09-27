@@ -25,7 +25,7 @@ tracks in the emulator against the firmware editor)."""
 
 import pathlib
 
-from remix.schema import Category, Proof, CavePatch, Kind, Module
+from remix.schema import Gate, Category, Proof, CavePatch, Kind, Module
 
 # Page-2 clamp counts, slots 6..11: selects carry their count, knobs 128.
 # Must match modules/busverb and modules/busdelay.
@@ -111,4 +111,5 @@ MODULE = Module(
         emit=emit,
         report_note=" (CC 62-67 reach FX2 page 2, CC 68-73 FX1 page 2)",
     ),),
+    gates=(Gate('tools/verify/verify_ccmap.py', remix_arg=False, venv=True),),
 )

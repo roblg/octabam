@@ -1,6 +1,6 @@
 """usb-audio -- the rig plus USB MIDI and twenty channels of USB audio.
 
-`bamsep26` (the TEMPO window, host pages DEL/REV) with USB MIDI and USB
+The rig (the TEMPO window, host pages DEL/REV) with USB MIDI and USB
 AUDIO (markandrus/octemu's UAC2 proof of concept) on the DRAM platform: at USB high speed the unit is also a 20-channel 44.1 kHz
 24-bit audio input, track N's post-FX pre-fader L/R on channels 2N-1/2N,
 MAIN L/R on 17/18 and CUE L/R on 19/20;
@@ -18,7 +18,7 @@ REMIX = Remix(
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "CC MAP", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
-             "USB MIDI", "USB AUDIO"),
+             "USB MIDI", "USB AUDIO EXTENDED"),
     fallback="SEND",
     hidden=("REVERB SERVER", "DELAY SERVER"),
     host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),

@@ -32,12 +32,12 @@ buffer, both payloads, any track.
 modules/character/manifest.py      the declaration -- knobs, donor, id, ModeViews
 modules/character/character.asm    the engine -- init, proc, in place
 modules/character/README.md        status, measured vs inferred, what is open
-remixes/bamsep26/remix.py          a remix that carries it (FX1 and FX2)
+remixes/bottleservice/remix.py     a remix that carries it (FX1 and FX2)
 tools/verify/verify_character.py   render gates against a float reference
 ```
 
 ```bash
-make check REMIX=bamsep26
+make check REMIX=bottleservice
 python3 tools/remix/audition.py character out/dry/drums_110.wav DRV=64
 python3 tools/verify/verify_character.py
 ```
@@ -87,6 +87,37 @@ locally and never flashed, `PORT` has a gate under the ColdFire port that
 pins its behaviour, `HARDWARE` ran on a unit. The selftest refuses a
 module without all of them. A module whose manifest is executed from an
 author's repository adds them with `dataclasses.replace` (`modules/synth`).
+
+Two more fields are the checks. `gates` names the verifiers `make check`
+runs when a remix carries the module, and `dear` its dearest knob
+settings:
+
+```python
+    gates=(Gate("tools/verify/verify_character.py", remix_arg=False),),
+    dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
+```
+
+`tools/verify/module_gates.py` collects the selection's gates, runs each
+script once (two modules naming one gate share it) with `REMIX` and
+`BUILD` exported, the remix name as `argv[1]` when `remix_arg` is set,
+and `.venv/bin/python3` when `venv` is set and the venv exists. An
+`"isolated"` gate (the default) builds its own scratch image or none and
+runs before the selected image is restored; an `"image"` gate reads
+`out/mainos_bus.bin` and runs after `make bus` and the shared set gates
+(`verify_tempobus` reads the card `verify_set` staged). A script that
+does not exist fails; the shared gates (the ledger selftest, the menu,
+the dirty-state render, the docs, the knob census, the set under the
+port) stay in the Makefile. Until 27 Sep 2026 the Makefile listed every
+module's verifier by hand, each one written to SKIP when the remix
+lacked its module.
+
+`dear` is every knob at its dearest setting, by the Param's own name: the
+mode the pricer calls the worst loop, knobs that gate work (a send at 0
+registers nothing, MIX 0 short-circuits a stage) at their maximum. The
+pressure render and the stress fixture read it; `make accept` is blocked,
+by name, for a remix with a DSP module that has none. The schema checks
+each name against `params` when the manifest loads, so a knob rename
+refuses the build rather than failing a fixture after the merge.
 
 `make remix` opens the remixer (`tools/remix/app.py`, Textual, provisioned
 by `make emu-setup`; manual `docs/remixer/REMIXER.md`). It derives a
@@ -386,7 +417,7 @@ dsp=DspSection(
   spelled `$30000`, and the literal is censused.
 - **`ptable`**: a tuple of words the build parks in the stock curve bank
   (X:0x4840) and points the source's `$fab1e0` literal at.
-- **Program space is per core.** `make bus` prints the live ledger.
+- **Program space is per core.** `make bus REMIX=<name>` prints the live ledger.
 
 ## Declaring a ColdFire module
 
@@ -437,8 +468,10 @@ author's ROM layout byte for byte. A module whose DRAM is its own (a
 calls `fn(modules)` (the remix's modules by key), writes the text it
 returns beside the unit as `remix.inc`, and the source reaches it with
 `.include "remix.inc"` (`modules/mode-defaults`: the view table of every
-module in the image; `modules/usbmidi`: the USB configuration descriptors,
-grown with the audio function when USB AUDIO is in the remix). Works for
+module in the image; `modules/usb-midi`: the USB configuration descriptors,
+grown with the audio function when a USB AUDIO module is in the remix, with
+that module's channel count; `modules/usb-audio-*`: the layout `.set` that
+picks which of three builds of one source the unit is). Works for
 both forms since 25 Sep 2026.
 
 DRAM units are assembled for the chip itself (`-mcpu=54455`, ISA C):
@@ -769,10 +802,12 @@ catches each collision it claims to.
 
 ## Before you open a PR
 
-- `make check` is the floor. Never claim an effect works because it
-  assembled.
+- `make check REMIX=<name>` is the floor; there is no default remix.
+  Never claim an effect works because it assembled. `make reach` lists
+  the gates the branch's diff reaches; `RUN=1` runs them.
+- Your gates and your `dear` settings go in the manifest, in the same PR.
 - If you changed the build rather than a module: `scripts/refhash.sh save`
-  on a tree you trust, make the change, `scripts/refhash.sh check`; 26
+  on a tree you trust, make the change, `scripts/refhash.sh check`; 24
   configurations, artifacts and build reports, bit-identical.
 - Voicing is judged by ear, level-matched, A/B/A/B, wet-only
   (`docs/history/VOICING.md`). Render locally rather than flashing.

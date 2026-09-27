@@ -1,6 +1,6 @@
 # `rig-mods` — The rig + every mod
 
-`bamsep26` with MIDI SCENES and Octakit (bridged). No LO-FI fix.
+`bottleservice` with MIDI SCENES and Octakit (bridged). No LO-FI fix.
 
 ## What is in it
 

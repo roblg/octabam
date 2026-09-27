@@ -18,7 +18,7 @@ page-2 editor (0x4003a9dc) and FX1's (0x4003abe4), all at instruction
 boundaries with the displaced instructions replayed.
 """
 
-from remix.schema import Category, Proof, Claims, Detour, Kind, Linked, Module
+from remix.schema import Gate, Category, Proof, Claims, Detour, Kind, Linked, Module
 
 H = bytes.fromhex
 
@@ -68,4 +68,5 @@ MODULE = Module(
                "FX1 page-2 dial: the same", kind="jmp", pad_to=8),
     ),
     claims=Claims(part_window=((0x90522, 144, "page-2 scene lock pool"),)),
+    gates=(Gate('tools/verify/verify_scenesp2.py'),),
 )

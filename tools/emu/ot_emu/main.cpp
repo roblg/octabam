@@ -1109,7 +1109,8 @@ int main(int _argc, char** _argv)
 	std::string peeks;			// comma-separated hex addresses to print after the load
 	std::string cmdLog;		// every ATA COMMAND in order, for diffing against route A
 	uint64_t pcRing = 0;		// instructions to record from the first ATA command
-	double loadMs = 6000.0;		// emulated ms to run after LOAD PROJECT is posted
+	double loadMs = 90000.0;	// ceiling in emulated ms for the load (it ends when the engine is idle after LOAD PROJECT)
+	double ataLatency = -1.0;	// --ata-latency: samples between an ATA data sector and its interrupt (default: the Rtos's 8, ~180 us)
 	std::string setName = "OCTABAM", projectName = "ONEAUX";
 	std::string serialOut;
 	double runMs = 1000.0;
@@ -1185,6 +1186,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--cmd-log" && i + 1 < _argc)		cmdLog = _argv[++i];
 		else if(a == "--pc-ring" && i + 1 < _argc)	pcRing = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--load-ms" && i + 1 < _argc)	loadMs = std::atof(_argv[++i]);
+		else if(a == "--ata-latency" && i + 1 < _argc)	ataLatency = std::atof(_argv[++i]);
 		else if(a == "--set" && i + 1 < _argc)		setName = _argv[++i];
 		else if(a == "--project" && i + 1 < _argc)	projectName = _argv[++i];
 		else if(a == "--serial-out" && i + 1 < _argc)	serialOut = _argv[++i];
@@ -1699,6 +1701,8 @@ int main(int _argc, char** _argv)
 				const auto forces0 = rtos.forces();
 				const auto disp0 = rtos.dispatches().size();
 				m.setPeriphTrace(!periphTrace.empty());
+				if(ataLatency >= 0.0)
+					rtos.setAtaLatency(ataLatency);
 				load = rtos.loadProjectLive(setName, projectName, loadMs, 3000.0, namesEarly);
 				const auto& r = load;
 				m.setPeriphTrace(false);
@@ -1720,9 +1724,17 @@ int main(int _argc, char** _argv)
 						  "after the BANK= parse -- RTOS_FORK.md section 7)" : "");
 				{
 					static const char* const g_loadStop[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
-					std::printf("             load run ended: %s%s%s\n",
-						g_loadStop[static_cast<int>(r.stop)],
-						r.stopWhy.empty() ? "" : " -- ", r.stopWhy.c_str());
+					if(r.stop == ot::Rtos::Stop::Gate)
+						std::printf("             load run ended: LOAD PROJECT handled, %.1f ms after the post (instruction %llu)\n",
+							r.handledMs, static_cast<unsigned long long>(r.handledInstr));
+					else
+						std::printf("             load run ended: %s%s%s%s\n",
+							g_loadStop[static_cast<int>(r.stop)],
+							r.stop == ot::Rtos::Stop::Time
+								? (r.handlerEntered ? " -- LOAD PROJECT STILL RUNNING at the budget (raise --load-ms)"
+												: " -- LOAD PROJECT never entered")
+								: "",
+							r.stopWhy.empty() ? "" : " -- ", r.stopWhy.c_str());
 				}
 				std::printf("             forces %llu, dispatches %zu over the load; now in %s at pc %#x\n",
 					static_cast<unsigned long long>(rtos.forces() - forces0),

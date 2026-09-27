@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Our mode selects print their WORDS on the unit, not their numbers.
 
-    python3 tools/verify/verify_labels.py [remix]        (default: bus)
+    python3 tools/verify/verify_labels.py <remix>
 
 It is the same method tools/build/stock_labels.py uses for the stock selects: the
 words are PRINTED, not stored, so the only honest way to read them back is to
@@ -27,7 +27,7 @@ IMAGE = pathlib.Path("out/mainos_bus.bin")
 
 def main():
     from remix import registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "bus"
+    name = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     env = {**os.environ, "REMIX": name, "XBUS": "1", "SPEC": "1"}
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"],
                        capture_output=True, text=True, env=env)

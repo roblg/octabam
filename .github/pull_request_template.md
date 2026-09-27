@@ -13,8 +13,9 @@ Remixes reached: <!-- every remix that carries a changed module -->
 
 ## Gates (on a tree rebased onto current main)
 
-<!-- Replace each line with the command and its result; delete lines that do not apply. -->
+<!-- `make reach` prints the list for this diff; paste each command with its result. -->
 
+- `make reach`:
 - `make check REMIX=<name>`:
 - `make test-acceptance`:
 - `make accept REMIX=<name> …`:

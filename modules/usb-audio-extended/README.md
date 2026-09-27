@@ -1,7 +1,7 @@
-# USB AUDIO
+# USB AUDIO EXTENDED
 
-The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit). Needs USB MIDI:
-the audio function is added to its composite device.
+The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), twenty channels.
+Needs USB MIDI: the audio function is added to its composite device.
 
 | USB speed | channels | content |
 |---|---|---|
@@ -19,6 +19,21 @@ Based on markandrus's proof of concept
 `custom/coldfire/usb-audio.s` at `6a9ff68`, MIT): the shims, producer,
 packet builder, rate servo and UAC2 replies are his. MAIN/CUE on 17–20 are
 Bryan T's (25 Sep 2026).
+
+## Variants
+
+`usbaudio.s` is assembled three ways, one module each; a remix carries one
+(they take the same hook sites, and the build refuses two by name):
+
+| module | `USB_LAYOUT` | high speed | full speed |
+|---|---|---|---|
+| USB AUDIO EXTENDED (this) | 0 | 20 channels: tracks 1–16, MAIN, CUE | the tracks' stereo sum |
+| [USB AUDIO FULL](../usb-audio-full/README.md) | 1 | 16 channels: the tracks | the tracks' stereo sum |
+| [USB AUDIO MASTER](../usb-audio-master/README.md) | 2 | 2 channels: track 8's L/R | track 8's L/R |
+
+The layout is a `.set` in the `remix.inc` each module's `Linked` unit
+writes. Every `USB_LAYOUT = 0` path is the source as it was; this module's
+image is byte-identical to the one built before the variants (27 Sep 2026).
 
 ## How it works
 
@@ -106,6 +121,10 @@ silent tracks. It checks:
 
 - EP `0x83` is isochronous, 960 bytes, bInterval 2.
 - AS_GENERAL has 20 channels; FORMAT_TYPE_I has subslot 4 and 24 bits.
+- Taps: with the read-back arena and MAIN/CUE re-poked before every poll
+  with words that name their source, side and frame, channel N carries
+  only its own source (tracks 1–8 L/R, MAIN L/R, CUE L/R), each seen.
+- Full speed after re-enumeration: 1 ms packets of 44/45 8-byte frames.
 - 880/960-byte packets at the 250 µs cadence, none empty after the first
   ten.
 - Every subslot's low byte is zero, with 0 underruns and 0 overruns.

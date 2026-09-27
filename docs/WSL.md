@@ -47,7 +47,8 @@ source $HOME/.local/bin/env
   does not see it, and hits the gate above even though the interactive shell
   passed it (observed 10 Sep 2026).
 - **`uv`** provisions `.venv` for the remixer. Without it `make remix` will not
-  start and six checks in `make verify` silently `[SKIP]`.
+  start and the label gates in `make check` (`verify_labels`,
+  `verify_modenames`, `verify_hidden`) report `[SKIP]`.
 - **`pulseaudio-utils`** is for audio. See *Changes needed*.
 
 ## Steps
@@ -63,8 +64,8 @@ cd ~/octabam
 make setup        # toolchain: assembler, emulator, firmware tool (~5 min)
 make os           # your own copy of Elektron's OS 1.40C
 make recon        # -> out/raw/section_3_MAIN_OS.bin
-make bus          # -> out/mainos_bus.bin
-make check        # the floor: build + cycle budget + verification
+make bus REMIX=<name>     # -> out/mainos_bus.bin (make modules lists the remixes)
+make check REMIX=<name>   # the floor: build + cycle budget + verification
 ```
 
 For the remixer:

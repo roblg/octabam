@@ -87,7 +87,7 @@ def matrix(mods):
 BEGIN, END = "<!-- modules:begin -->", "<!-- modules:end -->"
 FAMILIES = (("rig", "The rig"), ("effects", "Effects"),
             ("mods", "Firmware mods on the stock effects"),
-            ("reference", "Reference"))
+            ("reference", "Reference"), ("probes", "Probes"))
 
 
 def proof_text(x) -> str:
@@ -132,7 +132,8 @@ def remix_index() -> str:
              "[BUILDING.md](BUILDING.md) is the step-by-step guide. Each remix is "
              "a directory, `remixes/<name>/`: `remix.py` is the selection and "
              "`README.md` says what is in it and where it has run. This index is "
-             "rendered from the selections (`make docs`).", ""]
+             "rendered from the selections (`make docs`). BUILDING.md §8 says "
+             "how to write one.", ""]
     remixes = [registry.remix(n) for n in registry.remix_names()]
     for fam, title in FAMILIES:
         rs = [r for r in remixes if (r.family or "reference") == fam]
@@ -229,8 +230,7 @@ def _print_remixes():
     print("REMIXES  (remixes/<name>/remix.py)\n")
     for name in registry.remix_names():
         r = registry.remix(name)
-        default = "  <- default" if name == registry.DEFAULT_REMIX else ""
-        print(f"  {r.name:<12} {r.doc}{default}")
+        print(f"  {r.name:<12} {r.doc}")
         print(f"      {r.family or 'reference'} | {proof_text(r)}")
         print(f"      modules: {', '.join(r.modules)}")
         if r.fx1:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The remix on the port with its screen and panel: play with it.
 
-    make emu-live REMIX=bamsep26                  # OT_PROJECT or ~/.octabam_project
-    python3 tools/emu/live.py bamsep26 --project ~/octa/projects/RIG [--bank 2]
+    make emu-live REMIX=bottleservice                  # OT_PROJECT or ~/.octabam_project
+    python3 tools/emu/live.py bottleservice --project ~/octa/projects/RIG [--bank 2]
 
 Builds the remix (unless --image), stages the project onto a scratch card
 the way tools/verify/verify_set.py does, boots `ot_emu --live <fifo> --lcd
@@ -27,7 +27,7 @@ OUT = ROOT / "out/live"
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX", "bamsep26"))
+    ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--bank", type=int, default=int(os.environ.get("OT_BANK", "0") or 0))
     ap.add_argument("--image", default="", help="a built image instead of building the remix")
@@ -73,7 +73,7 @@ def main():
     fifo, lcd, log = work / "panel", OUT / "lcd.bin", OUT / "port.txt"
     os.mkfifo(fifo)
     cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", a.set_name,
-           "--project", a.name, "--load-ms", "20000", "--live", str(fifo), "--lcd", str(lcd)]
+           "--project", a.name, "--load-ms", "90000", "--live", str(fifo), "--lcd", str(lcd)]
     if not a.mki:
         cmd.append("--mkii")
     print("emu-live: booting (the screen appears once the project has loaded; ~30 s)")

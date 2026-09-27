@@ -1,7 +1,9 @@
-"""bottleservice -- the rig plus USB MIDI, USB AUDIO and Octakit.
+"""bottleservice -- the rig plus USB MIDI, USB AUDIO MASTER and Octakit.
 
-bamsep26's selection (hosts, TEMPO BUS) with USB MIDI and USB AUDIO on
-the DRAM platform (as `usb-audio`) and Em's Octakit (as `rig-kits`, with
+the rig's selection (the bus, three stations, hosts, TEMPO SYNC, CC MAP, MODE
+DEFAULTS, TEMPO BUS, SCENES P2; `bamsep26` until 27 Sep 2026) with USB MIDI and
+USB AUDIO MASTER (two channels: track 8, the master track, post-FX
+pre-fader) on the DRAM platform and Em's Octakit (as `rig-kits`, with
 SCENES KITS bridging CC MAP and Octakit on the CC dispatch). Unflashed.
 """
 
@@ -10,11 +12,11 @@ from remix.schema import Proof, Remix
 REMIX = Remix(
     name="bottleservice",
     family="rig", proof=Proof.PORT, proof_note="`make check` with the stress project; Kit save, reload and copy measured",
-    doc="The rig + USB MIDI + USB AUDIO + Octakit.",
+    doc="The rig + USB MIDI + USB AUDIO MASTER (T8 over USB) + Octakit.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "CC MAP", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
-             "USB MIDI", "USB AUDIO",
+             "USB MIDI", "USB AUDIO MASTER",
              "OCTAKIT", "SCENES KITS",
              "SCENES P2", "SCENES P2 KITS"),
     fallback="SEND",

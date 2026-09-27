@@ -23,7 +23,7 @@ Every mpy is `mpy x0,y1`, the audited-signed form, but the VOWL decode's
 store limiter.
 """
 
-from remix.schema import (Category, Proof, ModeView, BusRole, CavePatch, Claims, DspSection, Formatter,
+from remix.schema import (Gate, Category, Proof, ModeView, BusRole, CavePatch, Claims, DspSection, Formatter,
                           FormatterReg, Harness, Kind, MenuEntry, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -141,4 +141,6 @@ MODULE = Module(
         report_note=", registered as Spectrum SHPE's formatter (LP / BP / HP at 0 / 64 / 127)",
     ),),
     harness=Harness(layout_char="1", is_server=False, bus_client=False),
+    gates=(Gate('tools/verify/verify_spectrum.py', remix_arg=False),),
+    dear={'RES': 127, 'MODE': 3, 'ENV': 127, 'LDP': 127},   # MODE 3 = VOWL, the dearest loop (main, 27 Sep 2026)
 )

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "OctaBAM local acceptance report v1",
+  "title": "OctaBAM local acceptance report v2",
   "type": "object",
   "required": [
     "schema_version",
@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "remix": {
       "type": "string"

@@ -89,7 +89,14 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
   fi
 else
   echo "   already built: $DIS, $ASM, $HOST"
+  # Stage the tree's dsp_host/dsp_asm sources AND rebuild them: until 27 Sep
+  # 2026 this path only copied, so a binary built before a harness change
+  # kept running with the old options (PR #356 was reviewed twice on a
+  # dsp_host that ignored -paramfile, and verify_miniverb read MOD as inert
+  # for the same reason). cmake is incremental: nothing to do costs seconds.
   stage_dsp_host
+  cmake --build vendor/dsp56300/build --target dsp_asm dsp_host -j8 \
+    || { echo "   [!] dsp_host/dsp_asm rebuild FAILED"; exit 1; }
 fi
 
 echo

@@ -29,7 +29,7 @@ gives; the read offset is masked, not the address.
 
 Not a bus client: does not housekeep, does not write the bus."""
 
-from remix.schema import (Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -160,4 +160,6 @@ MODULE = Module(
     # it beside a server on that basis and verify_modulation proves it.
     claims=Claims(stock_instance_buffer=True, buffer_words=2048, fx1_only=True),
     harness=Harness(layout_char="3", is_server=False, bus_client=False),
+    gates=(Gate('tools/verify/verify_modulation.py', remix_arg=False),),
+    dear={'MIX': 127, 'FDBK': 127, 'DPTH': 127, 'MODE': 4, 'LOFI': 127},
 )

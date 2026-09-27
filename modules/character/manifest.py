@@ -19,7 +19,7 @@ fold -> saturate -> tilt -> compress -> width.
 Page 1: DRV FOLD WDTH COMP TONE MIX; page 2: SAT (22 Sep 2026: TXTR removed,
 WDTH in its slot; 20 Sep 2026: TONE back on page 1 in the return's slot)."""
 
-from remix.schema import (Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -108,4 +108,6 @@ MODULE = Module(
     # dry pass.
     claims=Claims(fx1_only=True),
     harness=Harness(layout_char="2", is_server=False, bus_client=False),
+    gates=(Gate('tools/verify/verify_character.py', remix_arg=False),),
+    dear={'DRV': 127, 'FOLD': 127, 'COMP': 127, 'MIX': 127, 'WDTH': 127, 'SAT': 0},
 )

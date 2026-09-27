@@ -13,7 +13,7 @@ the firmware does starts from modules/_template_cf/ (then modules/repitch/,
 modules/midi-scenes/).
 """
 
-from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
+from remix.schema import (BusRole, DspSection, Formatter, Gate, Harness, Kind,
                           MenuEntry, Module, Param, YBase)
 
 MODULE = Module(
@@ -74,4 +74,13 @@ MODULE = Module(
     # A letter for send_probe layout strings, if this is something a local
     # render should be able to place on a track.
     harness=Harness(layout_char=None, is_server=False),
+
+    # The checks `make check` runs when a remix carries this module: your
+    # render gates (modules/character has verify_character.py). stage="image" for one that reads the built image.
+    gates=(Gate("tools/verify/verify_template.py", remix_arg=False),),
+    # Every knob at its DEAREST setting, by name: the mode the pricer calls
+    # the worst loop, work-gating knobs at maximum. The pressure render and
+    # the stress fixture use it; without it `make accept` is blocked for
+    # every remix that carries the module. Checked against `params`.
+    dear={"P0": 127, "P1": 127},
 )

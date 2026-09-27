@@ -85,7 +85,7 @@ def digest(d):
 
 
 def main():
-    remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX", "bamsep26")
+    remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     # The rig burn is a knob on SEND rendered through the bus rig (DELAY
     # SERVER, SEND, REVERB SERVER). A remix without them (recfix, midi-scenes,
     # mods) has nothing to burn and nothing to render: a loud SKIP, never a

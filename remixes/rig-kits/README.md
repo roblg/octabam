@@ -1,6 +1,6 @@
 # `rig-kits` — The rig + Octakit
 
-`bamsep26` with Octakit (bridged). No LO-FI fix.
+`bottleservice` with Octakit (bridged). No LO-FI fix.
 
 ## What is in it
 

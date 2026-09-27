@@ -74,6 +74,11 @@ class Bench:
     def speed(self, hs):
         self.cmd(f"speed {'hs' if hs else 'fs'}", "ok")
 
+    def iso_hz(self, hz):
+        """The isochronous poll rate the audio endpoint's bInterval sets
+        (0: the port's default, 4000 at high speed, 1000 at full)."""
+        self.cmd(f"isohz {hz}", "ok")
+
     def setup(self, bm, breq, wval, widx, wlen):
         self.cmd("setup " + struct.pack("<BBHHH", bm, breq, wval, widx, wlen).hex(), "ok")
 

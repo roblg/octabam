@@ -2,8 +2,8 @@
 """A real project on the built image under the ColdFire port: the routing
 facts a flash used to be the first test of.
 
-    python3 tools/verify/verify_set.py bamsep26 --project ~/octa/backups/.../OCTABAM88 [--bank 2] [--frames 900]
-    OT_PROJECT=... [OT_BANK=2] make check REMIX=bamsep26   # the same, from make verify
+    python3 tools/verify/verify_set.py bottleservice --project ~/octa/backups/.../OCTABAM88 [--bank 2] [--frames 900]
+    OT_PROJECT=... [OT_BANK=2] make check REMIX=bottleservice   # the same, from make verify
 
 Stages the project (banks, project.work with [STATES] BANK= set to the
 tested bank, and every STATIC/FLEX sample the tested part's tracks name)
@@ -41,7 +41,7 @@ panel (edits arrive by --call), cross-core timing, the cycle wall.
 import argparse, math, os, pathlib, re, shutil, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
-from remix import registry  # noqa: E402
+from remix import registry, stock  # noqa: E402
 import ot_project as otp  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -152,13 +152,13 @@ def stage(pdir, part, set_name, name, tree, image_mb, bank, card):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("remix", nargs="?", default=registry.DEFAULT_REMIX)
+    ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--bank", type=int, default=int(os.environ.get("OT_BANK", "0")),
                     help="1-based (or OT_BANK); default: the project's saved bank")
     ap.add_argument("--frames", type=int, default=900,
                     help="after the transport start; the delay and the reverb each warm up 256 blocks, in series")
-    ap.add_argument("--load-ms", type=int, default=20000)
+    ap.add_argument("--load-ms", type=int, default=90000, help="ceiling for the load (the port ends it when the engine's queue is idle; bottleservice needs ~32 s)")
     ap.add_argument("--set-name", default="OCTABAM")
     ap.add_argument("--name", default="RIG")
     ap.add_argument("--image-mb", type=int, default=64)
@@ -325,7 +325,14 @@ def main():
     if ccmap:
         # the cave clamps to the slot's count from the descriptor: slot 6 is
         # every effect's MODE since 16 Sep 2026, so 77 lands as count - 1
-        fx1_mod = registry.by_id(part["fx1"][0])
+        # The id's module in THIS remix: a station's id is a stock effect's
+        # (Character = LO-FI 0x1c), and a remix without the station runs
+        # stock's, whose slot 6 counts 128 -- kits and scenes read 77 back
+        # while the check wanted Character's count of 3 (27 Sep 2026).
+        fx1_id = part["fx1"][0]
+        fx1_mod = registry.by_id(fx1_id)
+        if fx1_mod is None or fx1_mod.key not in mods:
+            fx1_mod = next((m for m in stock.MODULES if m.menu.fx2_id == fx1_id), None)
         cnt = (fx1_mod.params[6].count or 128) if fx1_mod is not None and fx1_mod.params else 128
         want = min(77, cnt - 1)
         lane_v, rec_v = lanes[0x32], recs[2 * 18]

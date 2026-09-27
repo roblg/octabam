@@ -479,7 +479,7 @@ def playback_test(image, project):
     fixture.stage(work / 'project', work / 'card.img', work / 'tone.wav')
     cmd = ['out/emu/ot_emu', '--image', str(image), '--card', str(work / 'card.img'),
            '--set', 'OCTABAM', '--project', 'RIG', '--sequencer', '--internal-clock',
-           '--frames', '4500', '--load-ms', '20000', '--dsp', '--main-level', '64',
+           '--frames', '4500', '--load-ms', '90000', '--dsp', '--main-level', '64',
            '--audio-out', str(work / 'audio'), '--watch-mem', '0x8000011c,2',
            '--call-at', '2500', '--call', '0x4009c7c4,90,0']
     with (work / 'run.log').open('w') as log:

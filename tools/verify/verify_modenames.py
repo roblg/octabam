@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The MODE formatter really does rename its neighbours -- CALLED, not read.
 
-    python3 tools/verify/verify_modenames.py [remix]      (default: bamsep26)
+    python3 tools/verify/verify_modenames.py [remix]      
 
 verify_labels' method, one step further. That file calls each
 select's formatter on the emulated ColdFire and compares what it PRINTED with
@@ -38,7 +38,7 @@ NAME_LEN = 6
 def main():
     from remix import registry
     import mode_names
-    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep26"
+    name = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     env = {**os.environ, "REMIX": name, "XBUS": "1", "SPEC": "1"}
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"],
                        capture_output=True, text=True, env=env)

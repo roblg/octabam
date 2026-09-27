@@ -56,7 +56,7 @@ decoder once, the same six FIFO writes).
 - Receive: 896,760 messages (7,170/s, notes + CCs on channel 16) and then
   1,471,080 messages (7,950/s, 185 s) sent into the unit, with the audio
   stream running, without a stall or a change in the audio stream
-  (`modules/usbaudio/README.md`, the image 64 takes).
+  (`modules/usb-audio-extended/README.md`, the image 64 takes).
 - No USB MIDI transmit measurement from the unit is recorded.
 - The `usb` remix (this module without USB AUDIO) has not been flashed.
 
@@ -69,7 +69,7 @@ DISK MODE entered with a MIDI session open, Windows.
 | what | where |
 |---|---|
 | code + queues | DRAM unit `usbmidi` (1,124 B, his bytes) + `usbmidi_clamp` in the platform reserve |
-| descriptors | DRAM unit `usbmidi_cfg` (4 × 124 B, or 4 × 250 B with USB AUDIO) |
+| descriptors | DRAM unit `usbmidi_cfg` (4 × 124 B, or 4 × 250 B with a USB AUDIO module) |
 | hooks | `0x4001d9ca` `0x4001daec` `0x4001e606` `0x40010bc8` `0x400108b0` `0x4001d858` `0x4001d896` |
 | pointer rewrites | the responder's four `pea` operands `0x4001d882` `0x4001d88a` `0x4001d8c0` `0x4001d8c8` |
 | firmware memory it uses | the firmware's own EP2 dQHs, dTDs and buffers (`0x4ec94900..`, `0x4ecc8000`, `0x4ecc9000`) |

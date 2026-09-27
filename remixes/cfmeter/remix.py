@@ -10,7 +10,7 @@ REMIX = Remix(
     family="probes", proof=Proof.PORT, proof_note="the readout chain under the port",
     doc="octatrick-usb + CF METER on T8's FX2: ColdFire idle time and frame-interrupt duration, over USB.",
     modules=("DIRECT JUMP", "SCALE QUANTIZER", "SYNTH MACHINE",
-             "USB MIDI", "USB AUDIO", "CF METER", "CF METER IDLE",
+             "USB MIDI", "USB AUDIO EXTENDED", "CF METER", "CF METER IDLE",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV"),

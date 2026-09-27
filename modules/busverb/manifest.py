@@ -4,7 +4,7 @@ Clones DARK REV's descriptor. Every slot states its name, including the ones
 the donor already carries, because the harness reads these names.
 """
 
-from remix.schema import (Category, Proof, BusRole, Claims, YBase, DspSection, Formatter,
+from remix.schema import (Gate, Category, Proof, BusRole, Claims, YBase, DspSection, Formatter,
                           Harness, Kind, MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -167,4 +167,8 @@ MODULE = Module(
     # memory there on the same core.
     claims=Claims(owns_fx2_buffers=True),
     harness=Harness(layout_char="R", is_server=True),
+    # the bus's two-core and one-aux gates (shared with BusDelay; run once)
+    gates=(Gate('tools/verify/verify_twocore.py', remix_arg=False),
+           Gate('tools/verify/verify_onebus.py', remix_arg=False)),
+    dear={'REV': 100, 'MODE': 2, 'SHMR': 127, 'DIFF': 127, 'GATE': 0, 'WET': 127},
 )

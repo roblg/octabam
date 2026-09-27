@@ -82,9 +82,15 @@ class GateTests(unittest.TestCase):
         self.assertEqual(a.aggregate([dict(status="blocked"), dict(status="failed")]), "failed")
         self.assertEqual(a.aggregate([dict(status="passed"), dict(status="not_applicable")]), "passed")
 
-    def test_unknown_dsp_profile_blocks_instead_of_using_defaults(self):
-        status, _ = a.pressure_profile([SimpleNamespace(key="NEW EFFECT", dsp=object())])
+    def test_module_without_dear_settings_blocks_instead_of_using_defaults(self):
+        known = SimpleNamespace(key="KNOWN", dsp=object(), params=(1,), dear={"MIX": 127})
+        new = SimpleNamespace(key="NEW EFFECT", dsp=object(), params=(1,), dear={})
+        status, reason = a.pressure_profile([known, new])
         self.assertEqual(status, "blocked")
+        self.assertIn("NEW EFFECT", reason)
+        self.assertNotIn("KNOWN", reason)
+        status, _ = a.pressure_profile([known])
+        self.assertEqual(status, "ready")
         status, _ = a.pressure_profile([SimpleNamespace(key="CF PATCH", dsp=None)])
         self.assertEqual(status, "not_applicable")
 
@@ -155,7 +161,8 @@ class GateTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     """Exercise the orchestration without an OS image or emulator."""
-    def run_workflow(self, stop_at=None, over=False, empty_render=False):
+    def run_workflow(self, stop_at=None, over=False, empty_render=False, remixes=("test",), blocked=False,
+                     profile=None, stress=False):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp).resolve()   # macOS: /var is /private/var; the runner resolves
             project = root / "project"
@@ -168,12 +175,18 @@ class WorkflowTests(unittest.TestCase):
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text("synthetic test input")
             calls = []
+            unique = list(dict.fromkeys(remixes))
 
             def gate(name, command, out, env, timeout):
-                calls.append(name)
-                self.assertEqual(env["REMIX"], "test")
-                self.assertEqual(env["OT_PROJECT"], str(project))
+                calls.append((name, env["REMIX"]))
                 self.assertNotIn("MAKEFLAGS", env)
+                if name == "check_shared":
+                    self.assertEqual(env["REMIXES"], " ".join(unique))
+                    self.assertIn(f"REMIXES={' '.join(unique)}", command)
+                else:
+                    self.assertEqual(env["OT_PROJECT"], str(project))
+                if name == "check_remix":
+                    self.assertIn(f"REMIX={env['REMIX']}", command)
                 if name == "cycles":
                     (out / "cycles.stdout").write_text(json.dumps(
                         dict(worst_core=3121 if over else 100, usable=3120)))
@@ -181,7 +194,7 @@ class WorkflowTests(unittest.TestCase):
                     dest = pathlib.Path(command[command.index("--out") + 1])
                     self.assertTrue(dest.is_relative_to(out))
                     dest.mkdir()
-                    (dest / "test_price.json").write_text(json.dumps(
+                    (dest / f"{env['REMIX']}_price.json").write_text(json.dumps(
                         dict(cores={"core 0 (T5-8)": {"over": 0, "layouts": 1},
                                     "core 1 (T1-4)": {"over": 0, "layouts": 1}})))
                 if name == "pressure_render":
@@ -189,44 +202,104 @@ class WorkflowTests(unittest.TestCase):
                     rows = [] if empty_render else [
                         dict(core=c, rc=0, flags=[], meter={str(c): [1600, 100]})
                         for c in (0, 1)]
-                    (dest / "test_render.json").write_text(json.dumps(rows))
+                    (dest / f"{env['REMIX']}_render.json").write_text(json.dumps(rows))
                 return dict(name=name, status="blocked" if name == stop_at else "passed",
-                            exit_code=0, skips=["missing fixture"] if name == stop_at else [])
+                            exit_code=0, log=name + ".log", stdout=name + ".stdout",
+                            skips=["missing fixture"] if name == stop_at else [])
 
             out = root / "result"
+            profile = profile or (("blocked", "no dearest settings") if blocked else ("ready", "test profile"))
+            source = ["--stress-source", str(project)] if stress else ["--project", str(project)]
             with patch.object(a, "ROOT", root), patch.object(a, "provenance", return_value={}), \
                     patch.object(a.registry, "remix", return_value=object()), \
                     patch.object(a.registry, "selected", return_value=[]), \
-                    patch.object(a, "pressure_profile", return_value=("ready", "test profile")), \
+                    patch.object(a, "pressure_profile", return_value=profile), \
                     patch.object(a, "run_gate", side_effect=gate), \
                     patch.dict(os.environ, {"MAKEFLAGS": "-j8"}, clear=True), \
                     contextlib.redirect_stdout(io.StringIO()):
-                rc = a.main(["--remix", "test", "--project", str(project), "--out", str(out)])
-            return rc, json.loads((out / "report.json").read_text()), calls
+                rc = a.main(["--remix", *remixes, *source, "--out", str(out)])
+            if len(unique) == 1:
+                return rc, json.loads((out / "report.json").read_text()), calls
+            reports = {r: json.loads((out / r / "report.json").read_text()) for r in unique}
+            reports["summary"] = json.loads((out / "summary.json").read_text())
+            reports["shared_log"] = (out / "check_shared.log").exists() or None
+            return rc, reports, calls
 
     def test_complete_report_contains_measurements_and_fingerprints(self):
         rc, report, calls = self.run_workflow()
         self.assertEqual((rc, report["status"]), (0, "passed"))
-        self.assertEqual(calls, ["check", "cycles", "pressure_price", "pressure_render"])
+        self.assertEqual([c for c, _ in calls],
+                         ["check_shared", "check_remix", "cycles", "pressure_price", "pressure_render"])
+        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual([g["name"] for g in report["gates"]], list(a.GATES))
         self.assertEqual(len(report["fixtures"]["stems"]), 8)
         self.assertEqual(len(report["provenance"]["image_sha256"]), 64)
         self.assertIn("pressure_render", report["measurements"])
 
     def test_zero_exit_skip_stops_dependent_stages(self):
-        rc, report, calls = self.run_workflow(stop_at="check")
+        rc, report, calls = self.run_workflow(stop_at="check_remix")
         self.assertEqual((rc, report["status"]), (1, "blocked"))
-        self.assertEqual(calls, ["check"])
+        self.assertEqual([c for c, _ in calls], ["check_shared", "check_remix"])
         self.assertEqual(report["gates"][-1]["status"], "not_run")
+
+    def test_shared_skip_stops_every_remix(self):
+        rc, reports, calls = self.run_workflow(stop_at="check_shared", remixes=("one", "two"))
+        self.assertEqual(rc, 1)
+        self.assertEqual(calls, [("check_shared", "one")])
+        for r in ("one", "two"):
+            self.assertEqual(reports[r]["status"], "blocked")
+            self.assertEqual(reports[r]["gates"][2]["status"], "blocked")
+            self.assertEqual(reports[r]["gates"][3]["status"], "not_run")
 
     def test_cycle_overrun_stops_before_pressure(self):
         rc, report, calls = self.run_workflow(over=True)
         self.assertEqual((rc, report["status"]), (1, "failed"))
-        self.assertEqual(calls, ["check", "cycles"])
+        self.assertEqual([c for c, _ in calls], ["check_shared", "check_remix", "cycles"])
 
     def test_empty_render_cannot_be_accepted(self):
         rc, report, _ = self.run_workflow(empty_render=True)
         self.assertEqual((rc, report["status"]), (1, "failed"))
         self.assertEqual(report["gates"][-1]["status"], "failed")
+
+    def test_several_remixes_share_one_shared_half(self):
+        rc, reports, calls = self.run_workflow(remixes=("one", "two"))
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls, [("check_shared", "one"),
+                                 ("check_remix", "one"), ("cycles", "one"), ("pressure_price", "one"), ("pressure_render", "one"),
+                                 ("check_remix", "two"), ("cycles", "two"), ("pressure_price", "two"), ("pressure_render", "two")])
+        self.assertEqual(reports["summary"], {"one": "passed", "two": "passed"})
+        for r in ("one", "two"):
+            self.assertEqual(reports[r]["status"], "passed")
+            self.assertEqual(reports[r]["remix"], r)
+            # the shared gate's log is the one file above both reports
+            self.assertEqual(reports[r]["gates"][2]["log"], "../check_shared.log")
+
+    def test_blocked_profile_still_checks_and_blocks_the_pressure_stages(self):
+        rc, reports, calls = self.run_workflow(remixes=("one", "two"), blocked=True, stress=True)
+        self.assertEqual(rc, 1)
+        self.assertEqual(calls, [("check_shared", "one"), ("check_remix", "one"), ("cycles", "one"),
+                                 ("check_remix", "two"), ("cycles", "two")])
+        self.assertEqual(reports["summary"], {"one": "blocked", "two": "blocked"})
+        gates = {g["name"]: g for g in reports["one"]["gates"]}
+        self.assertEqual(gates["preflight"]["status"], "passed")
+        self.assertEqual(gates["check_remix"]["status"], "passed")
+        self.assertEqual((gates["pressure_price"]["status"], gates["pressure_render"]["status"]), ("blocked", "blocked"))
+        self.assertIn("no dearest settings", gates["pressure_render"]["reason"])
+        # no stress fixture without a profile: the source project as-is
+        self.assertIn("source project as-is", gates["fixture"]["reason"])
+
+    def test_no_dsp_module_takes_the_stress_source_as_is(self):
+        rc, report, calls = self.run_workflow(profile=("not_applicable", "remix has no DSP modules"), stress=True)
+        self.assertEqual((rc, report["status"]), (0, "passed"))
+        self.assertEqual([c for c, _ in calls], ["check_shared", "check_remix", "cycles"])
+        gates = {g["name"]: g for g in report["gates"]}
+        self.assertIn("source project as-is", gates["fixture"]["reason"])
+        self.assertEqual(gates["pressure_render"]["status"], "not_applicable")
+
+    def test_repeated_remix_runs_once(self):
+        rc, report, calls = self.run_workflow(remixes=("test", "test"))
+        self.assertEqual((rc, report["status"]), (0, "passed"))
+        self.assertEqual(sum(c == "check_remix" for c, _ in calls), 1)
 
 
 if __name__ == "__main__":

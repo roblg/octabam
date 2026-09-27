@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""KNOB CLICK CENSUS: every continuous knob of every DSP module in bamsep26,
+"""KNOB CLICK CENSUS: every continuous knob of every DSP module of the rig fixture (registry.fixture),
 moved mid-render under dsp_host, checked for block-rate steps in the output.
 
 A knob the DSP applies once per block (16 frames on the unit) and not per

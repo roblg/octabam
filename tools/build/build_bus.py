@@ -121,10 +121,9 @@ NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 
 # WHICH MODULES THIS IMAGE CARRIES. REMIX=<name> selects remixes/<name>.py;
 # bus is the plain two-server selection and the one every refactor proves
-# itself against (scripts/refhash.sh); bamsep26, the rig, is make's default. A module with no menu entry (a ColdFire patch) takes no chooser row,
+# itself against (scripts/refhash.sh); there is no default. A module with no menu entry (a ColdFire patch) takes no chooser row,
 # so ORDER is the menu modules alone, in the remix's declared order.
-REMIX = remix_registry.remix(os.environ.get("REMIX")
-                             or remix_registry.DEFAULT_REMIX)
+REMIX = remix_registry.remix(os.environ.get("REMIX"))
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
 # A HIDDEN module (schema.Remix.hidden) is placed, dispatched and cloned but

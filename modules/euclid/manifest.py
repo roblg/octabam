@@ -1,7 +1,7 @@
 """EUCLID -- a swung, track-clocked filter/amp sequencer."""
 import math
 
-from remix.schema import (Category, Proof, BusRole, Detour, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Proof, BusRole, Detour, DspSection, Formatter, Harness,
                           Kind, Linked, MenuEntry, ModeView, Module, NameSelect,
                           Param, YBase)
 
@@ -65,4 +65,5 @@ MODULE = Module(
                "Reset Euclidean phase on the second PLAY path"),
     ),
     harness=Harness(layout_char="Q", is_server=False),
+    gates=(Gate('tools/verify/verify_euclid.py', venv=True, stage='image'),),
 )

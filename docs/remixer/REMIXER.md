@@ -8,7 +8,7 @@ local ColdFire emulator. Nothing in it touches hardware.
 
 ```bash
 make emu-setup      # uv provisions .venv with unicorn + textual
-make bus            # out/mainos_bus.bin, which the emulator view boots
+make bus REMIX=<name>   # out/mainos_bus.bin, which the emulator view boots
 make remix
 ```
 

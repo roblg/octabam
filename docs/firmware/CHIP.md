@@ -306,7 +306,7 @@ disassemble before believing.
 | free pool elsewhere | none | ✅ |
 | reclaimable | 3,384 words held by ten stock effects, at the cost of those effects | ✅ |
 
-`make bus` prints the live ledger (used / FREE per payload). Relocating the
+`make bus REMIX=<name>` prints the live ledger (used / FREE per payload). Relocating the
 project's code is cheap (assembled with `-org`); relocating stock code is
 not (binary, absolute branch targets), so more space means taking a
 neighbour's whole module (`stock.harvested`, `docs/remixer/MODULES.md`).

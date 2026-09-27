@@ -1,4 +1,4 @@
-"""rig-scenes -- bamsep26 + MIDI SCENES.
+"""rig-scenes -- the rig + MIDI SCENES.
 
 No LO-FI AMF fix: the Character station replaces LO-FI, so its code is
 harvested. Unflashed.

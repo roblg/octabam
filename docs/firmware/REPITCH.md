@@ -139,7 +139,8 @@ tempo if it is short (`0x40095ee0`); the ATTR tempo editors clamp to
 
 ## Tests
 
-- `python3 tools/verify/verify_repitch.py [REMIX]` (in `make verify`): the
+- `python3 tools/verify/verify_repitch.py [REMIX]` (the manifest's gate,
+  run by `make check` for a remix carrying REPITCH): the
   hook contracts, the page drawings, and with `OT_PROJECT` the playback
   cases.
 - `out/emu/ot_repitch_stock_test [--patched IMAGE]`

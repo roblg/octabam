@@ -100,6 +100,9 @@ namespace ot
 		//   out <ep> [<hex>]   OUT transfer (bytes, or a ZLP) to EP n    -> out <ep> <count>|stall
 		//   reset              bus reset (URI + PCI, address cleared)    -> ok
 		//   speed hs|fs        the port speed PORTSC1 reports            -> ok
+		//   isohz <hz>         the isochronous poll rate the endpoint's
+		//                      bInterval sets (0: 4000 at high speed,
+		//                      1000 at full, the audio default)       -> ok
 		// `in`/`out` answer when the transfer completes, which may be after
 		// the guest primes the endpoint -- one outstanding op per endpoint
 		// direction. Replies go to `_reply`.
@@ -125,7 +128,7 @@ namespace ot
 		// an isochronous one only here, so a host script that polls as fast
 		// as the socket allows still drains at the device's own rate.
 		bool isoPoll();		// true when an enabled isochronous IN found no request waiting
-		double isoPollHz() const { return m_speedHs ? 4000.0 : 1000.0; }
+		double isoPollHz() const { return m_isoHz > 0 ? m_isoHz : m_speedHs ? 4000.0 : 1000.0; }
 		bool isIso(int _ep, bool _in) const;
 
 		// The host's start-of-frame, raised by the run loop per audio block
@@ -167,6 +170,7 @@ namespace ot
 		std::array<uint32_t, g_size / 4> m_regs = {};
 		uint32_t m_otgscIs = 0;				// the latched BSVIS
 		bool m_speedHs = true;
+		double m_isoHz = 0;					// isohz: 0 = by speed
 		bool m_hwFaithful = true;
 		std::array<uint32_t, 2 * g_endpoints> m_curTd = {};	// ep + 4*dir
 		std::array<InOp, g_endpoints> m_in;

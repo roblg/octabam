@@ -60,9 +60,8 @@ make image REMIX=recfix BUILD=84         # -> out/OCTATRACK_OCTABAM84.bin
 ```
 
 `docs/remixes/BUILDING.md` is the walk-through. Always pass `REMIX=recfix`
-to `make check`, `make bus` and `make image` alike (the Makefile's default
-is a different remix and every verifier reads the one image at
-`out/mainos_bus.bin`). Sam's build of that image is sha256 `ecb574a9…`;
+to `make check`, `make bus` and `make image` alike (there is no default
+remix, and every verifier reads the one image at `out/mainos_bus.bin`). Sam's build of that image is sha256 `ecb574a9…`;
 yours should match if your stock 1.40C does (`370c55a3…`).
 
 ## 3. How to test it

@@ -11,7 +11,7 @@ BusVerb + BusDelay + Send + tempo sync. The build's bit-identity subject.
 
 ## Status
 
-The shape that has been on Sam's unit since August 2026 (under earlier names). `scripts/refhash.sh` rebuilds it in 26 configurations to prove a build change changed nothing.
+The shape that has been on Sam's unit since August 2026 (under earlier names). `scripts/refhash.sh` rebuilds it in 24 configurations to prove a build change changed nothing.
 
 ## Build
 

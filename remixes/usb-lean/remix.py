@@ -11,7 +11,7 @@ REMIX = Remix(
     name="usb-lean",
     family="mods", proof=Proof.PORT, proof_note="",
     doc="stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE).",
-    modules=("USB MIDI", "USB AUDIO",
+    modules=("USB MIDI", "USB AUDIO EXTENDED",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),

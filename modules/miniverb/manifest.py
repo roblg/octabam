@@ -1,5 +1,5 @@
 """Full-rate, modulated four-branch diffused FDN insert with allocator-owned memory."""
-from remix.schema import (Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, Module, Param, YBase)
 
 MODULE = Module(
@@ -28,4 +28,5 @@ MODULE = Module(
                    r7_latch_slot=None, gate_label=None),
     claims=Claims(stock_instance_buffer=True, buffer_words=16384),
     harness=Harness(layout_char="7", is_server=False),
+    gates=(Gate('tools/verify/verify_miniverb.py', stage='image'),),
 )

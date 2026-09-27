@@ -1,6 +1,6 @@
 # `rig-scenes` — The rig + MIDI SCENES
 
-`bamsep26` with MIDI scene locks. No LO-FI fix (Character replaces LO-FI).
+`bottleservice` with MIDI scene locks. No LO-FI fix (Character replaces LO-FI).
 
 ## What is in it
 

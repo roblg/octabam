@@ -251,6 +251,19 @@ def main():
             bad += 1
             print(f"  [FAIL] {mod.name}: manifest declares no {', '.join(missing)}")
     print("  [PASS] every module declares category, author, author_url, proof")
+    # ---- every module has a remix ----------------------------------------
+    # Every check starts from a remix (make check, make accept, the module
+    # gates, make reach): a module no selection carries is never built or
+    # checked. A module arrives with its remix (remixes/<name>/remix.py +
+    # README.md), or in an existing one.
+    carried = {k for n in registry.remix_names() for k in registry.remix(n).modules}
+    orphans = sorted(m.key for m in registry.modules().values()
+                     if not m.is_stock and m.key not in carried)
+    for key in orphans:
+        bad += 1
+        print(f"  [FAIL] {key}: no remix carries it -- add it to one, or add remixes/<name>/")
+    if not orphans:
+        print("  [PASS] every module is carried by at least one remix")
 
     # A server that never declared its payload must refuse, not guess: the
     # field's default is {"A","B"} and a guess would put the effect on all
@@ -532,12 +545,12 @@ def main():
     _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
-    _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (),
+    _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (), "usb-full": (), "usb-master": (),
              "octatrick": (), "octatrick-usb": (),     # stock effects + ColdFire modules, no DSP words
              "repitch": (),
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
-             "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
+             "rig-scenes": _rig, "rig-kits": _rig,
              "rig-mods": _rig, "usb": _rig, "usb-audio": _rig,
              "bottleservice": _rig}
     for _n in registry.remix_names():

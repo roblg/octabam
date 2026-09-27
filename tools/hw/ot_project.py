@@ -22,6 +22,7 @@ Writes edit GAIN= lines only, preserve CRLF and byte length discipline of the
 rest of the file, and refuse to run without a same-day backup directory
 matching /Users/sambanks/octa/backups/*pregain*.
 """
+import os
 import json, pathlib, re, sys, glob
 
 # ⚠️ EIGHT PART RECORDS, not four: 1-4 are the CURRENT parts and 5-8 are the
@@ -775,7 +776,7 @@ def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
           + (f", page 1 {list(page)}" if page else "") + (f", page 2 {list(page2)}" if page2 else ""))
 
 
-def host_rig(pdir, remix_name="bamsep26", guard=True):
+def host_rig(pdir, remix_name, guard=True):
     """The locked rig's FX2 assignment in every part of every bank: T1 =
     DELAY SERVER, T5 = REVERB SERVER, T8 = the stock DELAY, every other
     track SEND; then the
@@ -1172,7 +1173,7 @@ def make_clean_project(src, dest):
     print(f"{dest}: every FX1 = NONE, FX2 = SEND at 0, every page zero, in every part of every bank; .strd twins in step")
 
 
-def make_delay_test_project(src, dest, remix_name="bamsep26", sender=3):
+def make_delay_test_project(src, dest, remix_name, sender=3):
     """Copy a project (samples included) and put ONLY the delay bus in it:
     T1 = DELAY SERVER on FX2, every other track = SEND on FX2, FX1 = NONE
     everywhere with zeroed page bytes (id 0 runs SEND's proc on a stale
@@ -1317,7 +1318,7 @@ if __name__ == "__main__":
     elif cmd == "lfo-clear":                                                # <project> <track> <lfo> | <project> all
         lfo_clear(pdir, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else 0, guard=False)
     elif cmd == "host":                                                     # <project> [remix]: T1 BusDelay, T5 BusVerb, the rest SEND, then defaults
-        host_rig(pdir, sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else "bamsep26",
+        host_rig(pdir, sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else os.environ.get("REMIX"),
                  guard="--no-guard" not in sys.argv)
     elif cmd == "stamp-defaults":
         args = sys.argv[4:]

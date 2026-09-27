@@ -8,7 +8,7 @@ physical-cell tape transport and spring reverb remain omitted. See README for me
 and the outstanding hardware cycle/listening checks.
 """
 
-from remix.schema import (Category, Proof, BusRole, CavePatch, Detour, DspSection, Formatter, FormatterReg, Harness,
+from remix.schema import (Gate, Category, Proof, BusRole, CavePatch, Detour, DspSection, Formatter, FormatterReg, Harness,
                           Kind, Linked, MenuEntry, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -81,4 +81,5 @@ MODULE = Module(
                    "tapeecho", "te_cpu_hook", "CPU Tape Echo in the stock track-delay path",
                    pad_to=10),),
     harness=Harness(layout_char="6", is_server=False),
+    gates=(Gate('tools/verify/verify_tapeecho_cpu.py', venv=True, stage='image'),),
 )

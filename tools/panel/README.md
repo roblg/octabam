@@ -32,8 +32,8 @@ it; `/transport` taps the matrix keys. His text below still describes
 both backends.
 
 ```sh
-make panel REMIX=bamsep26                       # OT_PROJECT=<dir>, or the path in ~/.octabam_project
-make panel REMIX=bamsep26 PANEL_PORT=8571 PANELARGS='--sound off'
+make panel REMIX=bottleservice                       # OT_PROJECT=<dir>, or the path in ~/.octabam_project
+make panel REMIX=bottleservice PANEL_PORT=8571 PANELARGS='--sound off'
 make panel-app                                   # out/Virtual Panel.app (File > Open Firmware Image: out/panel_<remix>.bin)
 ```
 
@@ -96,8 +96,8 @@ fork's base, 9a49f21, keeping everything octabam gained since):
   Existing trees: `make dsp-repatch`, then `make emu-cf`.
 - `app/build.sh` takes `swiftc` from `xcrun` (the CommandLineTools
   compiler refused Xcode's SDK here).
-- Not ported: his firmware modules (`modules/direct-jump`,
-  `modules/quantizer`, `modules/synth`, `remixes/tim.py`, `make cf`).
+- His firmware modules were ported afterwards (PR #458): `modules/direct-jump`,
+  `modules/quantizer`, `modules/synth`; remixes `octatrick`, `octatrick-usb`.
 
 ---
 
@@ -226,11 +226,8 @@ keys instead. The port models the RTC on its DSPI too (`--rtc host|off|<epoch>`,
 host time under `--interactive`), so the dialog reads the real date; YES
 closes it just the same.
 
-**Route A** is unchanged: `--backend routea`, `install_rtc`, the
-`load_project_live` preamble, `press_key_live` for `/press` and
-`/transport`. Each server port stages into its own
-`out/_panel_stage_<port>` (two servers started together raced on the
-shared tree).
+Each server port stages into its own `out/_panel_stage_<port>` (two
+servers started together raced on the shared tree).
 
 ## Mapping the rest of the panel
 
@@ -266,8 +263,7 @@ completed entry is a good PR — pure discovery, no firmware bytes.
 | `GET /card/eject?open=1` | flush, stop the child, mount the image on the Mac (browsable; `open=0` leaves Finder alone): `{ok, phase, mount}`; `/status card_ejected`/`card_mount` when done |
 | `GET /card/insert` | clean the volume, detach, boot the child again: `{ok, phase}` |
 | `GET /keys` | the jump-table handlers (the `press()` fallback) |
-| `GET /press?idx=28&edge=0` | call a jump-table handler directly (route A only) |
-| `GET /transport?k=play\|rec\|stop` | PLAY/REC/STOP: the handlers under route A, matrix taps under the port |
+| `GET /transport?k=play\|rec\|stop` | PLAY/REC/STOP as matrix taps |
 | `GET /leds` | parsed LED bitmap + per-id values |
 | `GET /run?ms=1000` | advance emulated time (the sequencer runs here) |
 | `GET /peek?addr=0x460d175c&len=4` | read memory (either backend), hex |
@@ -703,7 +699,7 @@ Shift HOLDS FUNCTION for as long as it is down, so Shift + click = a FUNC combin
    scene block gets the value: `blob + pattern*0x18b2 + scene*0x100 +
    0x8f3e2 + track*0x20 + (page*6 + slot)` with page 0 PLAYBACK, 1 LFO,
    2 AMP, 3 FX1, 4 FX2 -- byte 15 for AMP VOL, `0xff` = not locked
-   (`docs/firmware/midi_re_scene.md`). Measured on T1..T4: `..ff 14 ff..` /
+   (`docs/firmware/MIDI.md` appendix C). Measured on T1..T4: `..ff 14 ff..` /
    `..ff 00 ff..` at `0x401716d1/f1/711/731`.
 4. **Move the fader**: the firmware morphs between the A locks and the B
    locks (or the Part value where a side has none) every DSP frame. With

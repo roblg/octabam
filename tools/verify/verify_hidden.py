@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A HIDDEN engine is placed, dispatched, off the chooser and draws nothing.
 
-    python3 tools/verify/verify_hidden.py [remix]      (default: bamsep26)
+    python3 tools/verify/verify_hidden.py [remix]      
 
 `Remix.hidden` takes an effect off the panel without taking it out of the
 image: the project's stored id still reaches it, and a main-menu screen edits
@@ -48,7 +48,7 @@ WRITER = 0x40054cd8
 
 def main():
     from remix import registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep26"
+    name = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     remix = registry.remix(name)
     mods = registry.modules()
     hidden = [k for k in remix.modules

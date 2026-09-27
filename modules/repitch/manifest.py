@@ -1,6 +1,6 @@
 """REPITCH -- tempo-following variable-speed playback as TSTR raw value 4."""
 
-from remix.schema import Category, Proof, Detour, Kind, Linked, Module, Poke, SymbolRef
+from remix.schema import Gate, Category, Proof, Detour, Kind, Linked, Module, Poke, SymbolRef
 
 H = bytes.fromhex
 KNOB, SELECT4, SELECT5 = 0x400479B4, 0x40046C28, 0x40046AB4
@@ -52,4 +52,5 @@ MODULE = Module(
         Poke(0x400D32D0, SELECT4.to_bytes(4, "big"), SELECT5.to_bytes(4, "big"),
              "FLEX TSTR widget 4 -> 5 positions"),
     ),
+    gates=(Gate('tools/verify/verify_repitch.py'),),
 )

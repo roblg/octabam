@@ -28,7 +28,7 @@ SYNC drawn from memory dumps (`--mem-dump` of the window planes). The
 screen itself: see the PR.
 """
 
-from remix.schema import Category, Proof, Detour, Kind, Linked, Module, Poke
+from remix.schema import Gate, Category, Proof, Detour, Kind, Linked, Module, Poke
 
 H = bytes.fromhex
 ENGINES = ("DELAY SERVER", "REVERB SERVER")    # box 0, box 1
@@ -113,4 +113,6 @@ MODULE = Module(
         Poke(0x40059F04, H("48780030"), H("48780040"), note="TEMPO window height 48 -> 64 (the menu window's)"),
         Poke(0x40059F08, H("48780049"), H("48780076"), note="TEMPO window width 73 -> 118 (the menu window's)"),
     ),
+    # reads the card verify_set staged: an image-stage gate
+    gates=(Gate('tools/verify/verify_tempobus.py', stage='image'),),
 )

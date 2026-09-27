@@ -23,6 +23,7 @@ the zeroed one sample for sample. A server's lines live in
 Y and are not filled here (they carry their own tagged counters; dsp_host's
 -dirty covers Y).
 """
+import os
 import argparse, pathlib, struct, subprocess, sys, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import send_probe
@@ -71,7 +72,7 @@ def knob_sets(mod):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("remix", nargs="?", default="bamsep26")
+    ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
     ap.add_argument("--image", default=str(ROOT / "out/mainos_bus.bin"))
     a = ap.parse_args()
     remix = registry.remix(a.remix); mods = registry.modules()

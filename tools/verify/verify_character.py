@@ -40,7 +40,7 @@ MEM = f"out/dsp/_audition_{MOD.name}_A.mem"
 # [REVERB] == INIT_TABLE[SEND], which is what the audition's scratch image
 # has. Those renders come from the shipping build's own payload A instead.
 RIG_IMAGE = "out/mainos_bus.bin"
-RIG_REMIX = "bamsep26"                   # the rig: Character beside the reverb on payload A
+RIG_REMIX = registry.fixture("CHARACTER", "REVERB SERVER", "SEND")   # Character beside the reverb on payload A
 RIG_MEM = "out/dsp/_verify_character_rig_A.mem"
 HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
 FXID = MOD.menu.fx2_id

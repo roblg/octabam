@@ -7,6 +7,89 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The gate run, once each (28 Sep 2026): `make accept REMIXES="a b c"`
+  runs the remix-independent half of `make check` once and `make
+  check-remix` per remix (report v2: gates `check_shared` and
+  `check_remix` where v1 had `check`, reports at `<out>/<remix>/` with
+  `summary.json`); it had run the whole `make check` per remix, so a
+  `make reach RUN=1` over N remixes ran the shared half N+1 times and the
+  per-remix half twice. `make reach` lists one accept line for the
+  accepted remixes and, with `STRESS_SOURCE` set, no separate check lines
+  for them; `KEEP=1` runs every gate and prints one table; `JOBS=n` runs
+  the check-remix lines through `tools/verify/check_shards.py` (`make
+  check-remixes`), n detached worktrees of the tree with their own port
+  builds, remixes handed out from one queue. `pressure.py render` renders
+  its 20 layouts `--jobs` at a time (the cores, at most 8) with both
+  payloads dumped once and handed to `rig_render --mem/--memB`; it was
+  serial, 9 to 22 minutes of every accept.
+- The port's load runs until the engine is idle (28 Sep 2026): LOAD
+  PROJECT entered and the engine back at its queue receive with nothing
+  queued, reported as `LOAD PROJECT handled, N ms after the post`;
+  `--load-ms` is a ceiling (90 s in every harness, was a fixed 20 s run).
+  Under Octakit the handler and the command sys queues behind it take
+  ~32 s emulated (her persistence work on a fresh card); the fixed run
+  started the transport inside it and her page-1 wrapper dropped every CC
+  as busy (bottleservice's set gate). ATA latency 8 samples (~180 us per
+  data sector, `--ata-latency`) instead of 1: sys consumes the engine's
+  reset-time "select bank 0" before the BANK= parse (RTOS_FORK section 7),
+  so mods, ok-ms and rig-mods (Octakit + MIDI SCENES) load instead of
+  halting in Octakit's activation lifecycle. `docs/remixer/EMU.md`.
+- Tape Echo's ColdFire probe (27 Sep 2026): its test vectors are glibc's
+  `random()` sequence on every host (macOS's differed, so a failing vector
+  here never occurred on the author's Linux), and its host oracle is
+  compiled with `-fwrapv`: `modules/tapeecho/cpu.c` lines 251, 303 and
+  305 overflow int32 on a steep negative MIX ramp (UBSan), which clang's
+  optimiser exploited ("tape output mismatch 3/16 (mode 3)") while the
+  ColdFire kernel wraps. The gate is green on this machine; the source
+  fix is the author's.
+- USB AUDIO in three modules over one source (27 Sep 2026):
+  `modules/usbaudio` is `modules/usb-audio-extended` (key USB AUDIO
+  EXTENDED, the twenty channels, images byte-identical) and `modules/usbmidi`
+  is `modules/usb-midi`. USB AUDIO FULL (`modules/usb-audio-full`, remix
+  `usb-full`): the sixteen track channels. USB AUDIO MASTER
+  (`modules/usb-audio-master`, remix `usb-master`): two channels, track 8's
+  L/R post-FX pre-fader at both speeds, a front L/R stereo input.
+  `bottleservice` carries USB AUDIO MASTER; every other USB remix USB AUDIO
+  EXTENDED. A remix with two of them is refused by name. USB AUDIO MASTER
+  polls every 1 ms at high speed too (bInterval 4, 44/45-frame packets of
+  at most 360 bytes); the port's USB bench takes `isohz` so a host script
+  polls at the descriptor's rate. Port only.
+
+- `make check` is two halves (27 Sep 2026): `make check-shared
+  REMIXES="a b"` runs the gates that do not depend on the remix (the
+  ledger selftest, the knob census, the isolated module gates with
+  `remix_arg=False`, once for the union of the modules) and `make
+  check-remix REMIX=<r>` the rest; `make reach RUN=1` prints and runs the
+  shared half once and the per-remix half per reached remix. Running every
+  remix on #482 repeated the shared half 25 times.
+- The gates follow the modules (27 Sep 2026): a manifest names its own
+  verifiers (`schema.Gate`) and its dearest knob settings
+  (`Module.dear`, checked against its knobs at load); `make verify` runs
+  the shared gates and then `tools/verify/module_gates.py` for the
+  selection, so a remix never runs another module's gates and a new
+  module needs no Makefile edit. `make accept` takes any remix: the
+  pressure stages run when every DSP module declares `dear` and block by
+  name otherwise; the stress fixture is derived from the selection
+  (servers on their cores' first tracks, the most different FX1 modules
+  that fit under the wall). `make reach` classifies the branch's diff
+  into the gates it reaches and `RUN=1` runs them; CI prints the list on
+  every PR. `pressure.py`'s knob table moved into the manifests. There
+  is no default remix any more: `make` and every tool take `REMIX=<name>`
+  and refuse without it; the bus, knob-census, Character and CC MAP gates
+  ask the registry for the smallest remix carrying what they need
+  (`registry.fixture`); refhash names its subject (`bus`) itself. The
+  selftest refuses a module no remix carries. `remixes/bamsep26` is
+  removed (bottleservice is its strict superset). Running every remix's
+  `make check` found: `verify_set` wanted Character's count on an FX1 id a
+  remix ran as stock LO-FI (kits, scenes); `generate_cpu.py --check`
+  called Tape Echo's cpu.s stale under a gcc other than the one that
+  wrote it (it records the gcc and SKIPs under another); `scripts/setup.sh`
+  staged `dsp_host` without rebuilding it, so the shared binary had ignored
+  `-paramfile` since #388 (verify_miniverb's "MOD residual 0.000", PR
+  #356's two reviews); `verify_modedefaults` SKIPs by name under Octakit,
+  whose editor wrapper halts a direct call (`gk_track_setup_byte_fatal`).
+  selftest refuses a module no remix carries.
+  every PR. `pressure.py`'s knob table moved into the manifests.
 - Character savings (27 Sep 2026): 355 -> 241 static cycles/sample
   (TAPE 105, TUBE 99, INFL 66 in the SAT fork). Both channels share one
   register for each of FOLD's gq/trim and TONE's k/t; SAT's DRV-0 flag and
@@ -240,7 +323,7 @@ flashed image was built from.
   `tools/hw/usb_counters.py`, the bench's `counters`, checked by
   `verify_usb`), `tools/harness/click_scan.py`, and image 64 packed from
   `usb-audio` for the first hardware run (the protocol in
-  `modules/usbaudio/README.md`). Unflashed.
+  `modules/usb-audio-extended/README.md`). Unflashed.
 - USB MIDI and USB AUDIO (25 Sep 2026, markandrus/octemu's work on the
   DRAM platform; remixes `usb` and `usb-audio`): class-compliant USB-MIDI
   mirroring DIN, and a UAC2 sixteen-channel input of the tracks (post-FX

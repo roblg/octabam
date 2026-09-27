@@ -161,8 +161,7 @@ def prep(name):
         # reader to two grains per line for the cycles; pricing the source
         # instead reports the four-grain figure for a two-grain image, which
         # is the saving invisible in the tool that measures it.
-        _g = registry.remix(os.environ.get("REMIX")
-                            or registry.DEFAULT_REMIX).grains
+        _g = registry.remix(os.environ.get("REMIX")).grains
         if _g != 4:
             from remix import grains as _grains
             src = _grains.roll(src, _g)
@@ -475,7 +474,7 @@ def main():
 
     import os
     from remix.schema import BusRole
-    remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+    remix = registry.remix(os.environ.get("REMIX"))
     mods = [dict(stem=pathlib.Path(m.dsp.asm).stem, key=m.key,
                  server=(m.dsp.bus_role is BusRole.SERVER),
                  fx1_only=(m.claims is not None and m.claims.fx1_only),

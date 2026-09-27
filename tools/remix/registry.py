@@ -164,9 +164,12 @@ def by_id(fx2_id: int):
 
 
 REMIXES_DIR = ROOT / "remixes"
-# The plain two-server image, the refhash gate's subject: what `tools/*.py`
-# build when REMIX is unset. `make` passes REMIX=bamsep26, the rig.
-DEFAULT_REMIX = "bus"
+# There is no default remix. Every tool takes the selection from its
+# argument or $REMIX and refuses without one (`remix(None)` below); a gate
+# that needs a particular image asks for it by requirement (`fixture`).
+# Until 27 Sep 2026 `make` defaulted to the rig and `tools/*.py` to `bus`.
+NO_REMIX = ("no remix selected: pass REMIX=<name> (or the remix argument); "
+            "`make modules` lists them")
 
 
 def remix_path(name: str) -> pathlib.Path:
@@ -176,8 +179,10 @@ def remix_path(name: str) -> pathlib.Path:
     return d if d.exists() else REMIXES_DIR / f"{name}.py"
 
 
-def remix(name: str = DEFAULT_REMIX):
-    """Load remixes/<name>/remix.py and return its REMIX."""
+def remix(name: str | None):
+    """Load remixes/<name>/remix.py and return its REMIX. None refuses."""
+    if not name:
+        raise SystemExit(NO_REMIX)
     f = remix_path(name)
     if not f.exists():
         raise SystemExit(f"no remix {name!r} -- have {sorted(remix_names())}")
@@ -237,3 +242,28 @@ def remix_names() -> list[str]:
 def selected(r) -> list:
     """The remix's modules, in its declared order."""
     return [modules()[k] for k in r.modules]
+
+
+def fixture(*keys: str, without_runtime: bool = False, grains: int | None = None) -> str:
+    """The name of the smallest remix carrying every module in `keys` (fewest
+    modules, then name), for a gate that needs a particular image rather
+    than the selected one: the one-aux rig for the bus gates, the plain
+    two-server image for the two-core gate. `without_runtime` excludes a
+    remix with a DRAM runtime (a gate under unicorn); `grains` pins
+    Remix.grains. Refuses, naming the requirement, when no remix fits."""
+    known = modules()
+    fits = []
+    for name in remix_names():
+        r = remix(name)
+        if not set(keys) <= set(r.modules):
+            continue
+        if without_runtime and any(known[k].runtime is not None for k in r.modules):
+            continue
+        if grains is not None and r.grains != grains:
+            continue
+        fits.append((len(r.modules), name))
+    if not fits:
+        raise SystemExit(f"no remix carries {', '.join(keys)}"
+                         + (" without a DRAM runtime" if without_runtime else "")
+                         + (f" at {grains} grains" if grains is not None else ""))
+    return min(fits)[1]

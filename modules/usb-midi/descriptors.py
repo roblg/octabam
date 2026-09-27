@@ -13,9 +13,13 @@ MSC interface byte for byte at the front:
                         then a second: a UAC2 AudioControl (clock source,
                         input terminal, USB streaming output terminal) +
                         AudioStreaming (alt 0 idle, alt 1 with the iso IN
-                        EP3): five interfaces, 250 bytes. Sixteen channels
-                        at high speed, the stereo sum at full speed, 24-bit
-                        samples in 4-byte subslots.
+                        EP3): five interfaces, 250 bytes. The audio module
+                        sets the channels: USB AUDIO EXTENDED twenty at high
+                        speed (tracks, MAIN, CUE), USB AUDIO FULL sixteen
+                        (the tracks), both with the stereo sum at full
+                        speed; USB AUDIO MASTER track 8's L/R at both
+                        speeds, a front-left/front-right cluster. 24-bit
+                        samples in 4-byte subslots in every layout.
 
 `cfg_len` is exported as an absolute symbol: the responder's two clamp
 shims (usbmidi.s) compare wLength against it, since the stock `moveq #32`
@@ -30,6 +34,12 @@ import struct
 SUBSLOT, BITS = 4, 24
 HS_CHANNELS, HS_MAXPKT, HS_BINTERVAL = 20, 12 * 80, 2     # 11/12 frames x 80 B every 250 us (16 tracks + MAIN + CUE)
 FS_CHANNELS, FS_MAXPKT, FS_BINTERVAL = 2, 45 * 8, 1       # 44/45 stereo frames x 8 B every 1 ms
+# per audio module: (channels, max packet) at high speed; full speed is FS_*
+HS_LAYOUT = {"USB AUDIO EXTENDED": (HS_CHANNELS, HS_MAXPKT),
+             "USB AUDIO FULL": (16, 12 * 64),                # 11/12 frames x 64 B (16 tracks) every 250 us
+             "USB AUDIO MASTER": (2, 45 * 8)}                # 44/45 frames x 8 B (T8) every 1 ms
+FRONT_LR = 0x3                                             # bmChannelConfig: front left, front right (MASTER)
+HS_BINTERVAL_1MS = 4                                       # 2^(4-1) microframes = 1 ms (MASTER at high speed)
 UAC2_AC_IFACE, UAC2_AS_IFACE = 3, 4                        # usbaudio.s .set: the same numbers
 UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID = 0x10, 0x11, 0x12
 
@@ -65,7 +75,7 @@ def midi_config(hs, other_speed=False):
     return hdr + body
 
 
-def audio_config(hs, other_speed=False):
+def audio_config(hs, other_speed=False, key="USB AUDIO EXTENDED"):
     """The MIDI composite plus a UAC2 audio function, 250 bytes (usb-audio.py).
 
     Two SEPARATE functions under interface associations, the shape of a
@@ -74,14 +84,18 @@ def audio_config(hs, other_speed=False):
     collecting the AudioStreaming one. The clock source is read-only
     (bmControls 0b01): a host-programmable clock would need a control OUT
     with a data stage, which the stock EP0 stack does not have.
+
+    `key` is the audio module: USB AUDIO MASTER declares its two channels
+    front left / front right (the standard stereo cluster); the other two
+    keep bmChannelConfig 0 as his descriptors have it.
     """
     bulk = 512 if hs else 64
-    nch = HS_CHANNELS if hs else FS_CHANNELS
-    maxpkt = HS_MAXPKT if hs else FS_MAXPKT
+    nch, maxpkt = HS_LAYOUT[key] if hs else (FS_CHANNELS, FS_MAXPKT)
+    chcfg = FRONT_LR if key == "USB AUDIO MASTER" else 0
     clk, it, ot = UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID
     clock = bytes([8, 0x24, 0x0A, clk, 0x01, 0x05, 0, 0])
     in_term = (bytes([17, 0x24, 0x02, it]) + struct.pack("<H", 0x0603) +
-               bytes([0, clk, nch]) + struct.pack("<I", 0) +
+               bytes([0, clk, nch]) + struct.pack("<I", chcfg) +
                bytes([0]) + struct.pack("<H", 0) + bytes([0]))
     out_term = (bytes([12, 0x24, 0x03, ot]) + struct.pack("<H", 0x0101) +
                 bytes([0, it, clk]) + struct.pack("<H", 0) + bytes([0]))
@@ -93,10 +107,10 @@ def audio_config(hs, other_speed=False):
         bytes([9, 4, as_, 0, 0, 1, 2, 0x20, 0]) +
         bytes([9, 4, as_, 1, 1, 1, 2, 0x20, 0]) +
         bytes([16, 0x24, 1, ot, 0, 1]) + struct.pack("<I", 1) +
-        bytes([nch]) + struct.pack("<I", 0) + bytes([0]) +
+        bytes([nch]) + struct.pack("<I", chcfg) + bytes([0]) +
         bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
         bytes([7, 5, 0x83, 0x05]) + struct.pack("<H", maxpkt) +
-        bytes([HS_BINTERVAL if hs else FS_BINTERVAL]) +
+        bytes([(HS_BINTERVAL_1MS if key == "USB AUDIO MASTER" else HS_BINTERVAL) if hs else FS_BINTERVAL]) +
         bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
     ac_midi = bytes([9, 0x24, 1, 0, 1]) + struct.pack("<H", 9) + bytes([1, 2])
     iad_midi = bytes([8, 0x0B, 1, 2, 0x01, 0x00, 0x00, 0])
@@ -117,8 +131,13 @@ def audio_config(hs, other_speed=False):
     return hdr + body
 
 
-def configs(with_audio):
-    f = audio_config if with_audio else midi_config
+def configs(audio=None):
+    """`audio`: the remix's audio module key, or None for USB MIDI alone."""
+    if audio:
+        def f(hs, other_speed=False):
+            return audio_config(hs, other_speed, audio)
+    else:
+        f = midi_config
     out = {"cfg_fs": f(False), "cfg_hs": f(True), "cfg_os_fs": f(False, True), "cfg_os_hs": f(True, True)}
     lengths = {len(v) for v in out.values()}
     assert len(lengths) == 1, "the four configurations must share one length (one clamp)"
@@ -126,9 +145,12 @@ def configs(with_audio):
 
 
 def remix_inc(modules):
-    tables, length = configs("USB AUDIO" in modules)
-    lines = [f"| remix.inc -- the configuration descriptors for this remix ({'USB MIDI + USB AUDIO' if 'USB AUDIO' in modules else 'USB MIDI'}),",
-             "| generated by modules/usbmidi/descriptors.py; the build rewrites it.",
+    audio = [k for k in HS_LAYOUT if k in modules]
+    assert len(audio) <= 1, f"one USB audio module per remix, not {audio}"
+    audio = audio[0] if audio else None
+    tables, length = configs(audio)
+    lines = [f"| remix.inc -- the configuration descriptors for this remix ({'USB MIDI + ' + audio if audio else 'USB MIDI'}),",
+             "| generated by modules/usb-midi/descriptors.py; the build rewrites it.",
              f"    .global cfg_len", f"    .set cfg_len, {length}", "",
              "    .text", "    .global cfg_fs, cfg_hs, cfg_os_fs, cfg_os_hs", ""]
     for name, blob in tables.items():
@@ -142,4 +164,4 @@ def remix_inc(modules):
 
 if __name__ == "__main__":
     import sys
-    print(remix_inc({"USB MIDI", "USB AUDIO"} if "--audio" in sys.argv else {"USB MIDI"}))
+    print(remix_inc({"USB MIDI", "USB AUDIO EXTENDED"} if "--audio" in sys.argv else {"USB MIDI"}))

@@ -1,17 +1,16 @@
 # Remixes
 
-A remix is a named selection of modules; `make image REMIX=<name>` builds it into a card-flashable image from your own OS 1.40C. [BUILDING.md](BUILDING.md) is the step-by-step guide. Each remix is a directory, `remixes/<name>/`: `remix.py` is the selection and `README.md` says what is in it and where it has run. This index is rendered from the selections (`make docs`).
+A remix is a named selection of modules; `make image REMIX=<name>` builds it into a card-flashable image from your own OS 1.40C. [BUILDING.md](BUILDING.md) is the step-by-step guide. Each remix is a directory, `remixes/<name>/`: `remix.py` is the selection and `README.md` says what is in it and where it has run. This index is rendered from the selections (`make docs`). BUILDING.md §8 says how to write one.
 
 ## The rig
 
 | remix | contains | proof |
 |---|---|---|
-| [`bamsep26`](../../remixes/bamsep26/README.md) | The rig: bus (BusVerb on T5 + BusDelay on T1) + three stations. | on hardware: Sam's MKII, image 43 (OCTABAM43, 21 Sep 2026) |
-| [`bottleservice`](../../remixes/bottleservice/README.md) | The rig + USB MIDI + USB AUDIO + Octakit. | port-gated: `make check` with the stress project; Kit save, reload and copy measured |
+| [`bottleservice`](../../remixes/bottleservice/README.md) | The rig + USB MIDI + USB AUDIO MASTER (T8 over USB) + Octakit. | port-gated: `make check` with the stress project; Kit save, reload and copy measured |
 | [`rig-kits`](../../remixes/rig-kits/README.md) | The rig + Octakit. | `make check` |
 | [`rig-mods`](../../remixes/rig-mods/README.md) | The rig + MIDI SCENES + Octakit, bridged. | `make check` |
 | [`rig-scenes`](../../remixes/rig-scenes/README.md) | The rig + MIDI SCENES. | `make check` |
-| [`usb`](../../remixes/usb/README.md) | bamsep26 + USB MIDI (class-compliant, mirrors DIN). | `make check` |
+| [`usb`](../../remixes/usb/README.md) | The rig + USB MIDI (class-compliant, mirrors DIN). | `make check` |
 | [`usb-audio`](../../remixes/usb-audio/README.md) | usb + USB AUDIO: the tracks, MAIN and CUE over USB (UAC2, 20 channels). | on hardware: Sam's MKII, image 64, 25 Sep 2026 |
 
 ## Effects
@@ -38,12 +37,21 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 | [`recfix`](../../remixes/recfix/README.md) | The recorder loop click: the four ColdFire fixes beside the stock FX2 chooser, no DSP code of our own. | on hardware: with the bus, 12 Sep 2026 (OCTABAM83); RECORDER HOLD and RLEN PLEN port-gated |
 | [`repitch`](../../remixes/repitch/README.md) | stock effects with variable-speed REPITCH in the TSTR selector. | on hardware: repeat98's MKII, 16 Sep 2026 (OCTABAM81) |
 | [`scenes`](../../remixes/scenes/README.md) | All the firmware mods of the MIDI SCENES family, no effects: scenes over MIDI, the LO-FI AMF fix, CC to page 2. | port-gated |
+| [`usb-full`](../../remixes/usb-full/README.md) | stock + USB MIDI + USB AUDIO FULL (16 ch: the tracks). | port-gated |
 | [`usb-lean`](../../remixes/usb-lean/README.md) | stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE). | port-gated |
+| [`usb-master`](../../remixes/usb-master/README.md) | stock + USB MIDI + USB AUDIO MASTER (2 ch: track 8). | port-gated |
 
 ## Reference
 
 | remix | contains | proof |
 |---|---|---|
 | [`restock`](../../remixes/restock/README.md) | every stock FX2 effect, all fourteen: put my unit back. | `make check` |
+
+## Probes
+
+| remix | contains | proof |
+|---|---|---|
+| [`cfmeter`](../../remixes/cfmeter/README.md) | octatrick-usb + CF METER on T8's FX2: ColdFire idle time and frame-interrupt duration, over USB. | port-gated: the readout chain under the port |
+| [`cfmeter-port`](../../remixes/cfmeter-port/README.md) | cfmeter without the idle loop: the port gate for the readout chain and the interrupt timing. | port-gated: the readout chain under the port |
 
 Never share a built image: it contains Elektron's OS.

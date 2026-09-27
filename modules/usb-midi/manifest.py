@@ -19,26 +19,26 @@ from remix.schema import Category, Proof, Detour, Kind, Linked, Module, SymbolRe
 # Manifests are executed from source, not imported as a package; the
 # descriptor generator beside this file is loaded by path.
 _spec = importlib.util.spec_from_file_location(
-    "usbmidi_descriptors", pathlib.Path(schema.__file__).resolve().parents[2] / "modules/usbmidi/descriptors.py")
+    "usbmidi_descriptors", pathlib.Path(schema.__file__).resolve().parents[2] / "modules/usb-midi/descriptors.py")
 descriptors = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(descriptors)
 
 H = bytes.fromhex
 
 MODULE = Module(
-    name="usbmidi", key="USB MIDI", kind=Kind.CF_PATCH,
+    name="usb-midi", key="USB MIDI", kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="markandrus/octemu", author_url="https://github.com/markandrus/octemu",
     proof=Proof.PORT, proof_note="enumerates, receives and transmits under the port (`verify_usb`); not on hardware",
     doc="Class-compliant USB-MIDI in and out on the OT's own USB port, mirroring the DIN ports (markandrus/octemu).",
     linked=(
         # his unit, verbatim: the build re-links it at his zone address and
         # compares with his usb-midi.py's blob (1,124 B, from our stock bytes)
-        Linked("usbmidi", "modules/usbmidi/usbmidi.s", cpu="54455", dram=True,
+        Linked("usbmidi", "modules/usb-midi/usbmidi.s", cpu="54455", dram=True,
                reference=(0x400d24f0, "6291d91e923145be62719eee56c2ca823d36c2d71ae538550e70b5533d404e60")),
-        Linked("usbmidi_clamp", "modules/usbmidi/clamp.s", cpu="54455", dram=True),
+        Linked("usbmidi_clamp", "modules/usb-midi/clamp.s", cpu="54455", dram=True),
         # the four configurations for THIS remix (124 B, or 250 B with USB
         # AUDIO's function added) and the absolute `cfg_len` the clamps read
-        Linked("usbmidi_cfg", "modules/usbmidi/cfg.s", cpu="5475", dram=True,
+        Linked("usbmidi_cfg", "modules/usb-midi/cfg.s", cpu="5475", dram=True,
                include=descriptors.remix_inc),
     ),
     detours=(

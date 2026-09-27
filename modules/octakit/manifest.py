@@ -52,7 +52,7 @@ import pathlib
 import re
 
 from remix import arena
-from remix.schema import Category, Proof, ArenaReserve, Kind, Module, Runtime
+from remix.schema import Gate, Category, Proof, ArenaReserve, Kind, Module, Runtime
 
 _ABI = pathlib.Path(__file__).parent / "upstream/runtime/abi.inc"
 
@@ -99,4 +99,5 @@ MODULE = Module(
     # computes the geometry literals from the total (for her alone, her bytes).
     arena=ArenaReserve(pages=528, where="top",
                        recipe_writes=arena.OCTAKIT_RECIPE_WRITES),
+    gates=(Gate('tools/verify/verify_octakit.py', remix_arg=False),),
 )

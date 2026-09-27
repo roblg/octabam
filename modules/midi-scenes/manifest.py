@@ -32,7 +32,7 @@ caller's return address and his `reload` stub substitutes it
 sites for rel_after.
 """
 
-from remix.schema import Category, Proof, Claims, Detour, Kind, Linked, Module, Poke
+from remix.schema import Gate, Category, Proof, Claims, Detour, Kind, Linked, Module, Poke
 
 UP = "modules/midi-scenes/upstream/gas/"
 H = bytes.fromhex
@@ -122,4 +122,5 @@ MODULE = Module(
     # his MIDI-track lock store: the 144-byte freeze twin (0x90492) then the
     # 144-byte sparse blob (0x90522) inside every Part window (his memory_map)
     claims=Claims(part_window=((0x90492, 288, "MSC freeze twin + sparse blob"),)),
+    gates=(Gate('tools/verify/verify_midiscenes.py', remix_arg=False),),
 )

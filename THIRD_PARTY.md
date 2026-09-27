@@ -18,8 +18,8 @@ time (`.incbin`, `make os`).
 | Airwindows Pockey | MIT | Chris Johnson | `modules/character` TXTR, 13 to 22 Sep 2026 (removed; `git show OCTABAM43:modules/character/pockey_ref.py`) |
 | JClones TapeHead, DaTube, OInflator, AC1 (JSFX) | MIT | JClones | `modules/character` SAT (TAPE / TUBE / INFL), COMP / GLUE |
 | audiojs/filter `moogLadder`, `oberheim` (Zavalishin's zero-delay forms) | MIT | audiojs contributors | `modules/spectrum` LADR, LP / BP |
-| markandrus/octemu `custom/coldfire/usb-midi.s`, `custom/usb-midi.py` (descriptors) | MIT | markandrus | `modules/usbmidi` (his text; one ISA-B substitution, README) |
-| markandrus/octemu `custom/coldfire/usb-audio.s`, `custom/usb-audio.py` (descriptors) | MIT | markandrus | `modules/usbaudio` (his shims, producer, packet builder and servo; the loader replaces his card payload machinery) |
+| markandrus/octemu `custom/coldfire/usb-midi.s`, `custom/usb-midi.py` (descriptors) | MIT | markandrus | `modules/usb-midi` (his text; one ISA-B substitution, README) |
+| markandrus/octemu `custom/coldfire/usb-audio.s`, `custom/usb-audio.py` (descriptors) | MIT | markandrus | `modules/usb-audio-extended` (his shims, producer, packet builder and servo; the loader replaces his card payload machinery); `modules/usb-audio-full` and `modules/usb-audio-master` assemble the same source with fewer channels |
 | markandrus/octemu `src/board/ot-board.c` USB packet bench (line protocol) | MIT | markandrus | `tools/emu/ot_emu/usb.h` speaks the same protocol so his `tests/usb-host.py` drives the port; the model is written here |
 | Airwindows Capacitor2 | MIT | Chris Johnson | `modules/spectrum` ISO (`capacitor2_ref.py`) |
 
@@ -55,6 +55,16 @@ transcribed).
 Portions of the firmware analysis tooling originate from
 https://github.com/mxldyn/octamax, Copyright (c) 2025-2026 Maxolydian, MIT
 (`LICENSE`).
+
+`tools/ghidra/processors/DSP56300/` (the DSP56300 processor module) and
+`tools/ghidra/patches/coldfire-emac.patch` (ColdFire ISA_C/EMAC in Ghidra's
+68000 module) were written for this repository by Robert Gay and are offered
+to Ghidra upstream as `roblg/ghidra` #3 and #2. They carry Ghidra's
+licence, Apache-2.0, in each file's header so they can go upstream as they
+are; the patch is a diff against Ghidra 12.1.4's
+`Ghidra/Processors/68000` (Apache-2.0, National Security Agency).
+`make ghidra-install` adds both to a copy of your own Ghidra release; no
+Ghidra file is committed.
 
 ## Fetched by `make setup`, never committed (`vendor/`, gitignored)
 

@@ -1534,11 +1534,54 @@ namespace ot
 		// A generous budget: with the card live the borrowed call is preempted
 		// constantly, so the step count is dominated by the OTHER tasks
 		// running underneath it, not by the call itself.
+		m_machine.countPc(g_loadHandler);
 		out.posted = callAsMain(g_postLoad, {g_projectName}, d0, 200000000);
 		if(!out.posted)
 			out.postWhy = m_why;
-		out.stop = run(_runMs, false);
-		if(out.stop != Stop::Time)
+		// Run until the engine has taken LOAD PROJECT and is next at its
+		// queue receive with nothing queued (g_engineQueue), within the
+		// budget. The handler
+		// is usually entered while the borrowed post call is still stepping
+		// (the scheduler runs every task underneath it), so its entry is
+		// counted from before the post rather than waited for.
+		const double postSample = m_sample;
+		double left = _runMs;
+		for(;;)
+		{
+			out.stop = runToPc(g_engineReceive, left);
+			if(out.stop != Stop::Gate)
+				break;
+			if(m_machine.pcCount() > 0 && m_machine.peek32(g_engineQueue + 4) == 0)
+			{
+				out.handledMs = (m_sample - postSample) / g_sampleHz * 1000.0;
+				out.handledInstr = m_machine.instructions();
+				break;
+			}
+			// Another command is queued (or this pass was not the load's): step
+			// off the receive and wait for the next pass.
+			if(!stepOnce())
+			{
+				out.stop = Stop::Illegal;
+				break;
+			}
+			left = _runMs - (m_sample - postSample) / g_sampleHz * 1000.0;
+			if(left <= 0.0)
+			{
+				out.stop = Stop::Time;
+				break;
+			}
+		}
+		out.handlerEntered = m_machine.pcCount() > 0;
+		m_machine.countPc(1);
+		// Park where the fixed-budget run used to leave the machine: the
+		// engine blocked in its receive and main at its spin, which the
+		// borrowed calls that follow (--call, the sequencer branch) require.
+		if(out.stop == Stop::Gate && runToMainSpin() != Stop::Gate)
+		{
+			out.stop = Stop::Fault;
+			out.stopWhy = m_why;
+		}
+		if(out.stop != Stop::Time && out.stop != Stop::Gate)
 			out.stopWhy = m_why;
 		out.partPtr = m_machine.peek32(g_partPtr);
 		out.savedBank = m_savedBank;
