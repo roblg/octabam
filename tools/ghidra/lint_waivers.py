@@ -7,6 +7,18 @@ The lint lists the waivers an image did not need under DEBUG=1.
 """
 
 WAIVERS = [
+    # ---- ColdFire hooks whose output register is the point ----------------
+    dict(check="reg-liveness", key="MAIN_OS:40005830", regs="A0",
+         why="rig-hosts fx2_page1: a0 = the page-1 default of slot d2 read through the rig's id "
+             "table instead of the DELAY descriptor (modules/rig-hosts/righosts.s)"),
+    dict(check="reg-liveness", key="MAIN_OS:40005840", regs="A1",
+         why="rig-hosts fx2_page2: a1 = the page-2 default of slot d2, as above"),
+    dict(check="reg-liveness", key="MAIN_OS:40037840", regs="D6",
+         why="scenes-p2: the FX2 page-2 knob draw shows a held scene's lock value; "
+             "`d6 = the value to draw. Keeps everything but d6 and a0` (modules/scenes-p2/p2scenes.s)"),
+    dict(check="reg-liveness", key="MAIN_OS:40037bdc", regs="D6",
+         why="scenes-p2: the same for FX1's page-2 knob draw"),
+    # ---- DSP encodings ------------------------------------------------------
     dict(check="novel-form", key='instr:955(ALU:760(,),ALUm,ALUW:835(),PM:860(R5wS,EA:148(EAx:143())))',
          why="BASELINE, unreviewed: ships in main 0b6204c (bamsep26), e.g. DSP_A:P:0019df `add a,b,x:(r03),x# /1`; needs hardware evidence or a rewrite to a stock form"),
     dict(check="novel-form", key='instr:1090()',

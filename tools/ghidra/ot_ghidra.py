@@ -635,6 +635,16 @@ def dsp_lint_inputs(built, work):
         (work / f"{prog}.in").write_text("\n".join(lines) + "\n")
 
 
+def cf_lint_inputs(built, work):
+    stock_len = IMG.stat().st_size
+    (work / "MAIN_OS.image").write_bytes(built)
+    lines = ["# MAIN_OS: the built image", f"image 0x{BASE:x} MAIN_OS.image"]
+    for i, (at, raw, _blob, _n) in enumerate(dram_runtimes(built, stock_len)):
+        (work / f"MAIN_OS.dram{i}").write_bytes(raw)
+        lines.append(f"dram 0x{at:x} MAIN_OS.dram{i}")
+    (work / "MAIN_OS.in").write_text("\n".join(lines) + "\n")
+
+
 def read_out(path):
     rows = []
     for line in path.read_text().splitlines():
@@ -642,8 +652,10 @@ def read_out(path):
     return rows
 
 
-def waived(check, key, waivers):
-    return next((w for w in waivers if w["check"] == check and w["key"] == key), None)
+def waived(check, key, waivers, regs=()):
+    """The waiver covering a finding; one that names `regs` covers only those."""
+    return next((w for w in waivers if w["check"] == check and w["key"] == key
+                 and (not regs or "regs" not in w or set(regs) <= set(w["regs"].split()))), None)
 
 
 def cmd_lint(args):
@@ -666,17 +678,19 @@ def cmd_lint(args):
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     dsp_lint_inputs(built, work)
+    cf_lint_inputs(built, work)
 
     cmd = [str(head), str(proj), args.name, "-process", "-readOnly", "-noanalysis",
-           "-scriptPath", str(HERE), "-postScript", "OtLintDsp.java", str(work)]
+           "-scriptPath", str(HERE), "-postScript", "OtLintDsp.java", str(work),
+           "-postScript", "OtLintCf.java", str(work)]
     log(" ".join(cmd))
     logf = work / "ghidra.log"
     with open(logf, "w") as fh:
         rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode
     text = logf.read_text(errors="replace")
-    for m in re.finditer(r"(OtLintDsp: .*?)(?:\s+\(GhidraScript\))?\s*$", text, re.M):
+    for m in re.finditer(r"(OtLint(?:Dsp|Cf): .*?)(?:\s+\(GhidraScript\))?\s*$", text, re.M):
         log(m.group(1))
-    outs = {p: work / f"{p}.out" for p in ("DSP_A", "DSP_B")}
+    outs = {p: work / f"{p}.out" for p in ("MAIN_OS", "DSP_A", "DSP_B")}
     missing = [p for p, o in outs.items() if not o.exists()]
     if rc != 0 or missing:
         for ln in [ln for ln in text.splitlines() if "ERROR" in ln or "Exception" in ln][:10]:
@@ -695,7 +709,7 @@ def cmd_lint(args):
             elif row[0] == "form" and row[1] == "built":
                 built_forms.setdefault(row[2], []).append((row[3], f"{prog}:{row[4]}"))
             elif row[0] == "finding":
-                findings.append((row[1], f"{prog}:{row[2]}", row[3]))
+                findings.append((row[1], f"{prog}:{row[2]}", row[3], (row[4].split() if len(row) > 4 else [])))
             elif row[0] == "note":
                 log(f"{prog}: {row[1]}")
     for key, sites in sorted(built_forms.items(), key=lambda kv: kv[1][0][0]):
@@ -705,8 +719,8 @@ def cmd_lint(args):
                              f"an encoding neither stock payload uses: {where}"
                              + (f" and {len(sites) - 4} more" if len(sites) > 4 else "")))
     bad = 0
-    for check, key, text in findings:
-        w = waived(check, key, waivers)
+    for check, key, text, *rest in findings:
+        w = waived(check, key, waivers, rest[0] if rest else ())
         if w:
             used.add(id(w))
             log(f"waived {check} {key}: {w['why']}")

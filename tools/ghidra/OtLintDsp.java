@@ -70,6 +70,9 @@ public class OtLintDsp extends GhidraScript {
 			return;
 		}
 		debug = System.getenv("DEBUG") != null && !System.getenv("DEBUG").isEmpty();
+		if (!currentProgram.getLanguage().getProcessor().toString().equals("DSP56300")) {
+			return;
+		}
 		File input = new File(args[0], currentProgram.getName() + ".in");
 		if (!input.exists()) {
 			println("OtLintDsp: " + currentProgram.getName() + ": no " + input.getName() + ", skipped");
