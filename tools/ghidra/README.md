@@ -99,12 +99,12 @@ cave the build fills (`0x400d6b00`..`0x400d7c3c`, `tools/remix/state.py`).
 ## `make lint-ghidra`: static checks on a built image
 
 ```bash
-make bus && make lint-ghidra GHIDRA=~/ghidra_12.x
+make bus && make lint-ghidra GHIDRA=out/ghidra/ghidra_12.1.4_PUBLIC-octabam
 python3 tools/ghidra/ot_ghidra.py lint --ghidra DIR [--image out/mainos_bus.bin] [--project DIR]
 ```
 
 The gate fails when no Ghidra is given, or when the Ghidra given has no DSP56300
-module. The first run imports the stock project if it is missing, which takes a
+module (`make ghidra-install` above makes one). The first run imports the stock project if it is missing, which takes a
 few minutes. After that a run takes about 20 s.
 
 The built image goes into the stock programs for one read-only headless run,
@@ -122,7 +122,7 @@ image's appended payloads (`depack.py`). A finding prints as
 | `call-clobber` | DSP | the caller sets a register just before a `bsr`/`jsr`, the callee writes it without reading it first, and the caller reads it after |
 | `do-loop-end` | DSP | a loop holding changed words ends on a change of flow or loop control, or its LA is not an instruction's last word |
 | `wild-target` | DSP | a flow or dispatch entry goes to a word no record loads, or into a two-word instruction |
-| `novel-form` | DSP | an encoding neither stock payload uses. The key is the SLEIGH constructor tree with register choices collapsed, so it follows the processor module's line numbers |
+| `novel-form` | DSP | an encoding neither stock payload uses. The key is the tree of SLEIGH constructors that decoded it, each named by its display template, operands and length (not its line, which moves), with register choices collapsed. A parallel instruction's ALU op and its move are keyed separately: the chip decodes each from its own field |
 
 `reg-liveness` follows the cave with a small symbolic interpreter over p-code.
 - Stack slots are tracked, so a register that is saved and restored counts as
@@ -138,22 +138,32 @@ image's appended payloads (`depack.py`). A finding prints as
 A finding that is safe goes in `lint_waivers.py`, with the reason and the
 evidence. A `reg-liveness` waiver names its registers (`regs="D6"`), so a new
 clobber at the same site still fails. `DEBUG=1` lists each waiver applied and
-each waiver the image did not need. main (0b6204c, `bamsep26`) needs these:
+each waiver the image did not need. upstream main (68af650, `bamsep26`)
+needs these:
 
 - **Four intentional outputs:**
   - rig-hosts' a0/a1 at `0x40005830`/`0x40005840`;
   - scenes-p2's d6 at `0x40037840`/`0x40037bdc`.
 
   Each is waived with the module's own statement.
-- **15 DSP encodings with no stock precedent:** entered as **BASELINE,
+- **11 DSP encoding parts with no stock precedent:** entered as **BASELINE,
   unreviewed**. Each needs hardware evidence, or a rewrite to a form stock
-  uses.
+  uses. They include `div`/`andi`/`rep`, an `or` from a register, moves and a
+  `lua` with a negative displacement (Character's deliberate `lua (r3-$2)`),
+  and two Y parallel-move forms.
+
+A waiver covers a part wherever it appears. The negative-displacement `lua`
+waiver would also pass a wrapped `lua (r7+$46)`, which is the same encoding.
+That incident is a read below the r7 instance block, and an r7 slot-bounds
+check is the place to catch it.
 
 ### Replayed incidents
 
 These are images of known failures (`docs/remixer/FAILURE_MODES.md`, the
 history), rebuilt from their commits or reconstructed where the broken state
-was never committed. Each was built with the assembler of its time.
+was never committed. Each was built with the assembler of its time. Measured
+on Ghidra 12.1.4 with `make ghidra-install`; the same on 12.3-DEV with the
+`roblg/ghidra` branches.
 
 | incident | image | flagged |
 |---|---|---|
@@ -164,8 +174,8 @@ was never committed. Each was built with the assembler of its time.
 | V6: a detour into the middle of `save_stub` | reconstruction | `detour-target` `0x40009664` |
 | a 6-byte `jmp` over `move.l; lea`, the cave back into it | reconstruction | `detour-target` `0x400d741a` |
 | a `do` whose loop end resolved by label prefix | 59332e8 | `wild-target` + `do-loop-end` |
-| `lua (r7+$46)` wrapped to `-$3a` | reconstruction | `novel-form` |
-| the corrected V6; current main | 40a1f19; 0b6204c | nothing unwaived |
+| `lua (r7+$46)` wrapped to `-$3a` | reconstruction | `novel-form` against stock; passed by main's baseline waiver (above) |
+| the corrected V6; upstream main | 40a1f19; 68af650 | nothing unwaived |
 
 Not caught:
 - **Image 44's `move a,y:(r3+$1)`.** Stock uses the same encoding (payload A
