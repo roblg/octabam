@@ -5,6 +5,7 @@
     python3 tools/ghidra/ot_ghidra.py import [--ghidra DIR] [--project DIR] [--only MAIN_OS,DSP_A] [--image [PATH]]
     make ghidra [GHIDRA=<install dir>] [IMAGE=out/mainos_bus.bin]   # both steps
     make ghidra-install GHIDRA=<stock 12.1.4>            # the Ghidra to point GHIDRA at (install.sh)
+    python3 tools/ghidra/ot_ghidra.py lint [--image out/mainos_bus.bin]  # make lint-ghidra
 
 Three programs in one Ghidra project (default out/ghidra/octatrack.gpr):
 
@@ -731,7 +732,7 @@ def cmd_lint(args):
     for w in stale:
         log(f"waiver not needed by this image: {w['check']} {w['key']}")
     n = sum(len(v) for v in built_forms.values())
-    print(f"[lint] {image}: {n} changed DSP instructions, {len(built_forms)} forms, "
+    print(f"[lint] {image}: {n} changed DSP instructions ({len(built_forms)} encodings), "
           f"{len(findings)} findings, {len(findings) - bad} waived, {bad} failing")
     if bad:
         sys.exit(1)

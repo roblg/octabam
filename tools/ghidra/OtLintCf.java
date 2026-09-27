@@ -686,6 +686,7 @@ public class OtLintCf extends GhidraScript {
 			BitSet keep = (BitSet) kill.clone();
 			for (Address c : in.getFlows()) {
 				BitSet r = (BitSet) liveIn(c).clone();
+				r.andNot(calleeSaved);     // a prologue saving d2-d7/a2-a6 does not use them
 				gen.or(r);
 			}
 			kill = keep;

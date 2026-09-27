@@ -13,7 +13,7 @@
 // Output, tab-separated, one fact per line:
 //   form stock KEY ADDR        every stock instruction's form (the census)
 //   form built KEY ADDR        every changed instruction's form
-//   finding CHECK ADDR TEXT    do-loop-end | wild-target | reg-contract
+//   finding CHECK ADDR TEXT    do-loop-end | wild-target | reg-contract | call-clobber
 //   note TEXT
 //
 // A form is the mnemonic and operands with numbers, addresses and the index
@@ -158,6 +158,18 @@ public class OtLintDsp extends GhidraScript {
 				"): live after " + names(live) + "; stock effects write " + names(clob) +
 				"; contract " + names(k));
 		}
+		int stockHits = 0;
+		InstructionIterator si = listing.getInstructions(P.getMinAddress(), true);
+		while (si.hasNext()) {
+			Instruction in = si.next();
+			if (in.getAddress().getAddressSpace() != P) {
+				break;
+			}
+			if (callClobber(in) != null) {
+				stockHits++;
+			}
+		}
+		out.println("note\tstock: " + stockHits + " calls the call-clobber rule would flag");
 		liveMemo.clear();
 		writeMemo.clear();
 
@@ -317,6 +329,10 @@ public class OtLintDsp extends GhidraScript {
 
 	private void checkChanged(Instruction in, AddressSet loaded, Listing listing) {
 		out.println("form\tbuilt\t" + formKey(in) + "\t" + form(in) + "\t" + in.getAddress());
+		String clob = callClobber(in);
+		if (clob != null) {
+			finding("call-clobber", in.getAddress(), clob);
+		}
 		for (Address t : in.getFlows()) {
 			String why = targetProblem(t, loaded, listing);
 			if (why != null) {
@@ -686,6 +702,77 @@ public class OtLintDsp extends GhidraScript {
 		}
 		writeMemo.put(entry, w);
 		return (BitSet) w.clone();
+	}
+
+	/**
+	 * A register the caller writes just before the call (same block), the
+	 * callee writes without reading first, and the caller reads after: the
+	 * caller's write is dead, so it expected the value to survive the call.
+	 */
+	private String callClobber(Instruction call) {
+		if (!call.getFlowType().isCall() || call.getFallThrough() == null) {
+			return null;
+		}
+		List<Address> cs = callees(call);
+		if (cs.size() != 1 || currentProgram.getListing().getInstructionAt(cs.get(0)) == null) {
+			return null;
+		}
+		BitSet calleeLive = wholeAccumulators(liveIn(cs.get(0)));
+		BitSet cand = (BitSet) liveIn(call.getFallThrough()).clone();
+		cand.and(writes(cs.get(0)));
+		cand.andNot(calleeLive);
+		if (cand.isEmpty()) {
+			return null;
+		}
+		// Back through the block for the caller's own write; a call on the
+		// way defines (or reads) what its callee writes (or reads).
+		BitSet set = new BitSet(), seen = new BitSet();
+		Instruction p = call;
+		for (int k = 0; k < 64; k++) {
+			if (currentProgram.getReferenceManager().getReferenceCountTo(p.getAddress()) > 0 && p != call) {
+				break;              // a branch target: the block starts here
+			}
+			Instruction q = p.getPrevious();
+			if (q == null || q.getFlowType().isJump() || q.getFlowType().isTerminal()) {
+				break;
+			}
+			if (q.getFlowType().isCall()) {
+				for (Address c : callees(q)) {
+					seen.or(writes(c));
+					seen.or(liveIn(c));
+				}
+				p = q;
+				continue;
+			}
+			BitSet[] g = genKill(q);
+			BitSet w = (BitSet) g[1].clone();
+			w.andNot(seen);
+			set.or(w);
+			seen.or(wholeAccumulators(g[0]));   // read after the write: the write is used (any part of an accumulator: all of it)
+			seen.or(g[1]);
+			p = q;
+		}
+		cand.and(set);
+		if (cand.isEmpty()) {
+			return null;
+		}
+		return "`" + call + "`: the caller sets " + names(cand) + " just before it, reads " +
+			(cand.cardinality() > 3 ? "them" : names(cand)) + " after it, and " + cs.get(0) +
+			" writes " + names(cand) + " without reading it first";
+	}
+
+	/** An accumulator any byte of which is in `b`, whole. */
+	private BitSet wholeAccumulators(BitSet b) {
+		BitSet r = (BitSet) b.clone();
+		for (String acc : new String[] { "a", "b" }) {
+			Register reg = currentProgram.getRegister(acc);
+			int off = (int) reg.getAddress().getOffset();
+			if (b.get(off, off + reg.getMinimumByteSize()).cardinality() > 0) {
+				r.set(off, off + reg.getMinimumByteSize());
+			}
+		}
+		r.and(tracked);
+		return r;
 	}
 
 	/** Indirect calls whose target comes from the dispatch table at X:t. */
