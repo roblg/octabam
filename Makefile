@@ -433,6 +433,10 @@ ghidra-install: ## A copy of a stock Ghidra 12.1.4 with the DSP56300 module and 
 	@test -n "$(GHIDRA)" || { echo "usage: make ghidra-install GHIDRA=<stock Ghidra 12.1.4 install> [GHIDRA_DEST=dir]"; exit 1; }
 	tools/ghidra/install.sh $(GHIDRA) $(GHIDRA_DEST)
 
+.PHONY: lint-ghidra
+lint-ghidra: ## Static checks on out/mainos_bus.bin against the stock OS in Ghidra; FAILS without GHIDRA=<install dir> (tools/ghidra/README.md)
+	python3 tools/ghidra/ot_ghidra.py lint $(if $(GHIDRA),--ghidra $(GHIDRA))
+
 .PHONY: where
 where: ## Every doc paragraph citing one ColdFire address + a disasm window. make where A=0x40004d40 [N=128]
 	@test -n "$(A)" || { echo "usage: make where A=0x40004d40 [N=bytes]"; exit 1; }
