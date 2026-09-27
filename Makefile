@@ -267,7 +267,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_scenesp2.py $(REMIX)
 	@# 4-VOICE KIT: a KIT4 track's source stream == its four slice voices
 	@# struck by the STRT mask and summed, sample for sample, sliced and
-	@# unsliced; SKIPs without OT_PROJECT or without the module.
+	@# unsliced; SKIPs without OT_PROJECT, N/A without the module.
 	python3 tools/verify/verify_kit4.py $(REMIX)
 
 .PHONY: verify-roll

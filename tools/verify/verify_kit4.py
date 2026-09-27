@@ -23,7 +23,7 @@ stream, which is then checked against a model built from the slices alone:
             ringing over each other, summed (16-bit sources are exact in
             the DSP's top 24 bits)
 
-SKIPs without a project, the port (`make emu-cf`) or the .venv, or when
+SKIPs without a project, the port (`make emu-cf`) or the .venv; [N/A] when
 the remix does not carry 4-VOICE KIT. DEBUG=1 prints every step.
 """
 import argparse, os, pathlib, re, shutil, struct, subprocess, sys, wave
@@ -239,7 +239,7 @@ def main():
     a = ap.parse_args()
 
     if KEY not in registry.remix(a.remix).modules:
-        print(f"  [SKIP] verify_kit4: {a.remix} does not carry {KEY}")
+        print(f"  [N/A] verify_kit4: {a.remix} does not carry {KEY}")
         return 0
     if not a.project:
         print("  [SKIP] verify_kit4: no project (OT_PROJECT=<dir> or --project)")

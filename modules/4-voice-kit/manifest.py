@@ -19,7 +19,7 @@ ledger refuses the pair by that address.
 Measured under the port (verify_kit4, 27 Sep 2026): README.md.
 """
 
-from remix.schema import Kind, Linked, Module, Proof, SymbolRef
+from remix.schema import Category, Kind, Linked, Module, Proof, SymbolRef
 
 KIND_TABLE_FLEX = 0x400d6438             # the kind table 0x400d6434, entry 1 (FLEX)
 STOCK_RENDERER = 0x40004008              # the sample renderer (STATIC, FLEX, PICKUP)
@@ -28,6 +28,7 @@ MODULE = Module(
     name="4-voice-kit",
     key="4-VOICE KIT",
     kind=Kind.CF_PATCH,
+    category=Category.MACHINES, author="roblg", author_url="https://github.com/roblg",
     proof=Proof.PORT, proof_note="`verify_kit4`; nothing on hardware",
     doc="A FLEX track whose sample is named KIT4* plays four sample voices "
         "(its first four slices, or quarters), struck by the STRT mask "
