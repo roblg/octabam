@@ -29,7 +29,7 @@ on the panel link), dumps RAM at the end and checks:
 
 Writes out/tempobus/screen.png (the window before it closes is not kept;
 the last frame drawn is rendered from the second, reopened window).
-SKIPs without the port, without verify_set's staged card, or when the
+SKIPs without the port or without verify_set's staged card; [N/A] when the
 remix does not carry TEMPO BUS. What it cannot see: the LCD composition
 (the window planes are rendered from RAM), the MKII keymap (the port
 boots the MKI one; TEMPO, LEFT and RIGHT are the same codes in both).
@@ -70,7 +70,7 @@ def main():
     remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX", "bamsep26")
     mods = registry.remix(remix).modules
     if "TEMPO BUS" not in mods:
-        print(f"  [SKIP] verify_tempobus: {remix} does not carry TEMPO BUS")
+        print(f"  [N/A] verify_tempobus: {remix} does not carry TEMPO BUS")
         return 0
     if not EMU.exists():
         print("  [SKIP] verify_tempobus: the ColdFire port is not built (make emu-cf)")
